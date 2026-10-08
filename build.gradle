@@ -1,0 +1,42 @@
+subprojects {
+    apply plugin: 'java'
+
+    group = 'ai.resourcepack'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 21
+        options.encoding = 'UTF-8'
+    }
+
+    repositories {
+        mavenCentral()
+        maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    }
+
+    dependencies {
+        compileOnly 'io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT'
+        testImplementation 'com.google.code.gson:gson:2.10.1'
+        testImplementation 'org.yaml:snakeyaml:2.2'
+        testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+    }
+
+    test {
+        useJUnitPlatform()
+        maxHeapSize = '2g'
+        systemProperty 'slim', System.getProperty('slim', 'false')
+        testLogging { showStandardStreams = true }
+    }
+
+    processResources {
+        inputs.property('version', project.version)
+        filesMatching('plugin.yml') {
+            expand(version: project.version)
+        }
+    }
+}

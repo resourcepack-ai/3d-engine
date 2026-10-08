@@ -1,0 +1,23 @@
+# 3D Engine
+#
+# Put .glb, .gltf or .obj files in plugins/3DEngine/models/ and run /3d reload.
+# Each file can have a .yml of the same name beside it (scale, animations,
+# transitions, attachment points); see the README.
+
+pack:
+  # Serve the resource pack from this server over HTTP.
+  host: true
+  port: 8163
+  # The address to listen on; empty = all.
+  bind: ""
+  # The address players download the pack from, e.g. http://play.example.com:8163
+  # Empty = this server's IP and the port above.
+  url: ""
+  # Send the pack to players as they join (turn off if another plugin merges
+  # plugins/3DEngine/pack.zip into its own pack).
+  send: true
+  required: false
+  prompt: ""
+  # The pack format: [major, minor]. The shaders target Minecraft 26.3.
+  format: [97, 1]
+  description: "3D Engine models"

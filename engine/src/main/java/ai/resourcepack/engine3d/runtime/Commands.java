@@ -1,0 +1,255 @@
+package ai.resourcepack.engine3d.runtime;
+
+import ai.resourcepack.engine3d.api.ModelInstance;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.Vector;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * {@code /3d}: list, place, remove, scale, rotate, animate and give models, and
+ * re-bake the folder. A model is picked by looking at it.
+ */
+final class Commands implements CommandExecutor, TabCompleter, Listener {
+
+    private static final NamespacedKey PLACES = new NamespacedKey("3dengine", "places");
+    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "info", "reload", "pack");
+
+    private final Engine engine;
+    private final JavaPlugin plugin;
+
+    Commands(Engine engine, JavaPlugin plugin) {
+        this.engine = engine;
+        this.plugin = plugin;
+    }
+
+    private static void say(CommandSender to, String text) {
+        to.sendMessage(Component.text("3D ", NamedTextColor.AQUA).append(Component.text(text, NamedTextColor.GRAY)));
+    }
+
+    @Override
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String @NotNull [] args) {
+        String sub = args.length == 0 ? "help" : args[0].toLowerCase(Locale.ROOT);
+        switch (sub) {
+            case "list" -> {
+                if (engine.loadedModels().isEmpty()) say(sender, "No models yet. Put .glb, .gltf or .obj files in " + plugin.getDataFolder().getName() + "/models and run /3d reload.");
+                for (LoadedModel m : engine.loadedModels().values())
+                    say(sender, String.format("%s  %.2f blocks tall  states: %s", m.name(), m.height(), String.join(", ", m.states())));
+                for (String e : engine.errors()) say(sender, "failed: " + e);
+            }
+            case "reload" -> {
+                say(sender, "Baking models...");
+                engine.reload(sender);
+            }
+            case "pack" -> {
+                if (sender instanceof Player p) {
+                    engine.send(p);
+                    say(sender, "Sent the pack.");
+                }
+            }
+            case "place" -> {
+                Player p = player(sender);
+                if (p == null || args.length < 2) return usage(sender, "/3d place <model> [scale]");
+                LoadedModel m = model(sender, args[1]);
+                if (m == null) return true;
+                Location at = placeAt(p);
+                if (at == null) {
+                    say(sender, "Look at a block to place it on.");
+                    return true;
+                }
+                ModelInstance i = engine.spawn(m.name(), at, true);
+                if (args.length > 2) i.scale(parse(args[2], 1));
+                say(sender, "Placed " + m.name() + ".");
+            }
+            case "give" -> {
+                if (args.length < 2) return usage(sender, "/3d give <model> [player]");
+                LoadedModel m = model(sender, args[1]);
+                if (m == null) return true;
+                Player to = args.length > 2 ? plugin.getServer().getPlayerExact(args[2]) : player(sender);
+                if (to == null) return usage(sender, "/3d give <model> <player>");
+                to.getInventory().addItem(placer(m));
+                say(sender, "Gave " + to.getName() + " a " + m.name() + ": right-click a block to place it.");
+            }
+            case "remove", "scale", "rotate", "state" -> {
+                Player p = player(sender);
+                if (p == null) return true;
+                Instance i = lookedAt(p);
+                if (i == null) {
+                    say(sender, "Look at a model first.");
+                    return true;
+                }
+                switch (sub) {
+                    case "remove" -> {
+                        i.remove();
+                        say(sender, "Removed " + i.model.name() + ".");
+                    }
+                    case "scale" -> {
+                        if (args.length < 2) return usage(sender, "/3d scale <size, 1 = as made>");
+                        i.scale(parse(args[1], i.scale()));
+                        say(sender, String.format("%s at scale %.2f.", i.model.name(), i.scale()));
+                    }
+                    case "rotate" -> {
+                        if (args.length < 2) return usage(sender, "/3d rotate <degrees>");
+                        Location l = i.location();
+                        l.setYaw(l.getYaw() + (float) parse(args[1], 0));
+                        i.teleport(l);
+                    }
+                    case "state" -> {
+                        if (args.length < 2) return usage(sender, "/3d state <" + String.join("|", i.model.states()) + ">");
+                        if (!i.model.states().contains(args[1])) {
+                            say(sender, i.model.name() + " has no state " + args[1] + ": " + String.join(", ", i.model.states()));
+                            return true;
+                        }
+                        i.state(args[1]);
+                    }
+                    default -> { }
+                }
+            }
+            case "info" -> {
+                LoadedModel m = args.length > 1 ? model(sender, args[1]) : null;
+                if (m == null && sender instanceof Player p) {
+                    Instance i = lookedAt(p);
+                    if (i != null) m = i.model;
+                }
+                if (m == null) return usage(sender, "/3d info <model>");
+                say(sender, String.format("%s: %.2f tall, %.2f wide; states %s; points %s; %d game models, %.1f megatexels",
+                        m.name(), m.height(), m.radius() * 2, String.join(", ", m.states()), m.points().isEmpty() ? "none" : String.join(", ", m.points()),
+                        m.manifest.models.size(), m.manifest.texels / 1e6));
+            }
+            default -> {
+                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | info [model] | reload | pack");
+                say(sender, "Look at a placed model to remove, scale, rotate or animate it.");
+            }
+        }
+        return true;
+    }
+
+    private static boolean usage(CommandSender to, String text) {
+        say(to, "Usage: " + text);
+        return true;
+    }
+
+    private static Player player(CommandSender sender) {
+        if (sender instanceof Player p) return p;
+        say(sender, "Only a player can do that.");
+        return null;
+    }
+
+    private LoadedModel model(CommandSender to, String name) {
+        LoadedModel m = engine.loadedModels().get(name.toLowerCase(Locale.ROOT));
+        if (m == null) say(to, "No model called " + name + ". /3d list shows them.");
+        return m;
+    }
+
+    private static double parse(String s, double fallback) {
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** On top of (or against) the block looked at, facing the player. */
+    private static Location placeAt(Player p) {
+        Block b = p.getTargetBlockExact(8);
+        if (b == null) return null;
+        BlockFace face = p.getTargetBlockFace(8);
+        Location at;
+        if (face == null || face == BlockFace.UP) at = b.getLocation().add(0.5, Steering.height(b) > 0 ? Steering.height(b) : 1, 0.5);
+        else at = b.getRelative(face).getLocation().add(0.5, 0, 0.5);
+        at.setYaw(p.getLocation().getYaw() + 180);
+        return at;
+    }
+
+    /** The model the player is looking at, within eight blocks. */
+    private Instance lookedAt(Player p) {
+        Location eye = p.getEyeLocation();
+        Vector dir = eye.getDirection();
+        Instance best = null;
+        double bestT = Double.MAX_VALUE;
+        for (Instance i : engine.all()) {
+            if (!i.valid() || i.display.getWorld() != eye.getWorld()) continue;
+            Location at = i.location();
+            if (at.distanceSquared(eye) > 16 * 16) continue;
+            double r = Math.max(0.3, i.model.radius() * i.scale()), h = Math.max(0.3, i.model.height() * i.scale());
+            for (double t = 0; t < 8 && t < bestT; t += 0.1) {
+                double x = eye.getX() + dir.getX() * t, y = eye.getY() + dir.getY() * t, z = eye.getZ() + dir.getZ() * t;
+                if (y < at.getY() || y > at.getY() + h) continue;
+                if (Math.hypot(x - at.getX(), z - at.getZ()) <= r) {
+                    best = i;
+                    bestT = t;
+                    break;
+                }
+            }
+        }
+        return best;
+    }
+
+    /** An item that places {@code m} where it's used; it shows the model itself in the inventory. */
+    private static ItemStack placer(LoadedModel m) {
+        String still = m.manifest.states.get(m.defaultState()).model;
+        ItemStack item = Animator.item(m.name(), still, 0);
+        ItemMeta meta = item.getItemMeta();
+        meta.itemName(Component.text(m.name(), NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(Component.text("Right-click a block to place", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        meta.getPersistentDataContainer().set(PLACES, PersistentDataType.STRING, m.name());
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    @EventHandler
+    public void onUse(PlayerInteractEvent e) {
+        if (e.getAction() != Action.RIGHT_CLICK_BLOCK || e.getHand() != EquipmentSlot.HAND || e.getItem() == null || !e.getItem().hasItemMeta()) return;
+        String name = e.getItem().getItemMeta().getPersistentDataContainer().get(PLACES, PersistentDataType.STRING);
+        if (name == null) return;
+        e.setCancelled(true);
+        if (!e.getPlayer().hasPermission("3dengine.place")) return;
+        LoadedModel m = engine.loadedModels().get(name);
+        if (m == null) {
+            say(e.getPlayer(), "That model isn't loaded any more.");
+            return;
+        }
+        Block b = e.getClickedBlock();
+        Location at = e.getBlockFace() == BlockFace.UP ? b.getLocation().add(0.5, Steering.height(b) > 0 ? Steering.height(b) : 1, 0.5)
+                : b.getRelative(e.getBlockFace()).getLocation().add(0.5, 0, 0.5);
+        at.setYaw(e.getPlayer().getLocation().getYaw() + 180);
+        engine.spawn(m.name(), at, true);
+    }
+
+    @Override
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String @NotNull [] args) {
+        List<String> out = new ArrayList<>();
+        if (args.length == 1) {
+            for (String s : SUBS) if (s.startsWith(args[0].toLowerCase(Locale.ROOT))) out.add(s);
+        } else if (args.length == 2 && (args[0].equalsIgnoreCase("place") || args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("info"))) {
+            for (String m : engine.loadedModels().keySet()) if (m.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(m);
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("state") && sender instanceof Player p) {
+            Instance i = lookedAt(p);
+            if (i != null) for (String s : i.model.states()) if (s.startsWith(args[1])) out.add(s);
+        }
+        return out;
+    }
+}

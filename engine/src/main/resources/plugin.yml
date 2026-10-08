@@ -1,0 +1,21 @@
+name: 3DEngine
+version: ${version}
+main: ai.resourcepack.engine3d.Engine3DPlugin
+api-version: '1.21'
+description: Real 3D models from .glb, .gltf and .obj files, animated, in vanilla Minecraft.
+website: https://resourcepack.ai
+commands:
+  3d:
+    description: Place, resize, animate and reload 3D models.
+    usage: /3d help
+    permission: 3dengine.admin
+    aliases: [engine3d]
+permissions:
+  3dengine.admin:
+    description: Use /3d.
+    default: op
+    children:
+      3dengine.place: true
+  3dengine.place:
+    description: Place models with a model item.
+    default: op
