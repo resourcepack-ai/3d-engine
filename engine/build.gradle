@@ -1,2 +1,32 @@
+plugins {
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
 version = '0.1.0'
 base { archivesName = '3DEngine' }
+
+repositories {
+    // ai.resourcepack:common, our own shared plugin library.
+    maven { url = 'https://repo.resourcepack.ai' }
+}
+
+dependencies {
+    // The small library our plugins shade in (the usage heartbeat), relocated
+    // below so it never meets another plugin's copy.
+    implementation 'ai.resourcepack:common:0.2.0'
+}
+
+// The shaded jar is the plugin. The plain one keeps a classifier so the two
+// never share a name, and is what the addons compile against.
+shadowJar {
+    archiveClassifier.set('')
+    relocate 'ai.resourcepack.common', 'ai.resourcepack.engine3d.libs.common'
+}
+
+jar {
+    archiveClassifier.set('plain')
+}
+
+build {
+    dependsOn shadowJar
+}

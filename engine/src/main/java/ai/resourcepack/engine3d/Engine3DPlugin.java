@@ -19,16 +19,26 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
 
     private Engine runtime;
 
+    private ai.resourcepack.common.telemetry.Heartbeat heartbeat;
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
         runtime = new Engine(this, getFile().toPath());
         runtime.enable();
         Engine3D.Holder.set(this);
+        // Anonymous usage counting, the only telemetry this plugin has: a
+        // random id, the online player count and the names of plugins that
+        // depend on this one (3DPets and the rest). See Heartbeat for exactly
+        // what goes.
+        heartbeat = ai.resourcepack.common.telemetry.Heartbeat.of(this, "3d-engine")
+                .enabledWhen(() -> getConfig().getBoolean("telemetry", true))
+                .start();
     }
 
     @Override
     public void onDisable() {
+        if (heartbeat != null) heartbeat.stop();
         Engine3D.Holder.set(null);
         if (runtime != null) runtime.disable();
     }
