@@ -38,6 +38,13 @@ public final class Spec {
     public String defaultState;
     /** Kept as written, for the runtime (locomotion thresholds and state names). */
     public Map<String, Object> locomotion = new LinkedHashMap<>();
+    /**
+     * Set when the model is held as an item: per display context
+     * ({@code firstperson_righthand}, {@code thirdperson_righthand}, ...) its
+     * rotation, translation (in 1/16 block) and scale, as a block model's
+     * {@code display}. Contexts it doesn't name use the identity.
+     */
+    public Map<String, double[][]> item;
     /** The rest of the file, for plugins that keep their own settings beside a model. */
     public Map<String, Object> raw = new LinkedHashMap<>();
 
@@ -95,6 +102,18 @@ public final class Spec {
         if (m.get("transitions") instanceof List<?> l)
             for (Object o : l) s.transitions.addAll(transition(o, s.transitionFrames));
         if (m.containsKey("default-state")) s.defaultState = String.valueOf(m.get("default-state"));
+        if (m.get("item") instanceof Map<?, ?> it) {
+            s.item = new LinkedHashMap<>();
+            for (var e : it.entrySet()) {
+                if (!(e.getValue() instanceof Map<?, ?> d)) continue;
+                s.item.put(String.valueOf(e.getKey()), new double[][]{
+                        d.containsKey("rotation") ? vec(d.get("rotation")) : new double[]{0, 0, 0},
+                        d.containsKey("translation") ? vec(d.get("translation")) : new double[]{0, 0, 0},
+                        d.containsKey("scale") ? vec(d.get("scale")) : new double[]{1, 1, 1}});
+            }
+        } else if (Boolean.TRUE.equals(m.get("item"))) {
+            s.item = new LinkedHashMap<>();
+        }
         if (m.get("locomotion") instanceof Map<?, ?> loco)
             for (var e : loco.entrySet()) s.locomotion.put(String.valueOf(e.getKey()), e.getValue());
         return s;

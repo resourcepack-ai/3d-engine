@@ -74,6 +74,22 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
     }
 
     @Override
+    public java.util.Set<String> effects() {
+        return runtime.effectNames();
+    }
+
+    @Override
+    public ai.resourcepack.engine3d.api.EffectInstance effect(String name, Location at, double size) {
+        return runtime.effect(name, at, size);
+    }
+
+    @Override
+    public ai.resourcepack.engine3d.api.Particle particle(String name, Location at, org.bukkit.util.Vector velocity,
+                                                          ai.resourcepack.engine3d.api.Particle.Options options) {
+        return runtime.particle(name, at, velocity, options);
+    }
+
+    @Override
     public Collection<ModelInstance> instances() {
         return runtime.instances();
     }

@@ -36,10 +36,12 @@ import java.util.Locale;
 final class Commands implements CommandExecutor, TabCompleter, Listener {
 
     private static final NamespacedKey PLACES = new NamespacedKey("3dengine", "places");
-    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "info", "reload", "pack");
+    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "info", "effect", "reload", "pack");
 
     private final Engine engine;
     private final JavaPlugin plugin;
+    /** Effects put down with /3d effect, so /3d effect clear can take them away. */
+    private final List<ai.resourcepack.engine3d.api.EffectInstance> placedEffects = new ArrayList<>();
 
     Commands(Engine engine, JavaPlugin plugin) {
         this.engine = engine;
@@ -52,6 +54,14 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String @NotNull [] args) {
+        // From the console, a trailing player name acts as that player: /3d effect fire 2 Steve.
+        if (!(sender instanceof Player) && args.length > 1) {
+            Player as = plugin.getServer().getPlayerExact(args[args.length - 1]);
+            if (as != null) {
+                sender = as;
+                args = java.util.Arrays.copyOf(args, args.length - 1);
+            }
+        }
         String sub = args.length == 0 ? "help" : args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "list" -> {
@@ -59,6 +69,28 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                 for (LoadedModel m : engine.loadedModels().values())
                     say(sender, String.format("%s  %.2f blocks tall  states: %s", m.name(), m.height(), String.join(", ", m.states())));
                 for (String e : engine.errors()) say(sender, "failed: " + e);
+            }
+            case "effect" -> {
+                if (args.length < 2) {
+                    say(sender, "Effects: " + (engine.effectNames().isEmpty() ? "none (put .glsl files in " + plugin.getDataFolder().getName() + "/effects)" : String.join(", ", engine.effectNames())));
+                    return usage(sender, "/3d effect <name> [size] | /3d effect clear");
+                }
+                if (args[1].equalsIgnoreCase("clear")) {
+                    placedEffects.forEach(ai.resourcepack.engine3d.api.EffectInstance::remove);
+                    say(sender, "Cleared " + placedEffects.size() + " effects.");
+                    placedEffects.clear();
+                    return true;
+                }
+                Player p = player(sender);
+                if (p == null) return true;
+                if (!engine.effectNames().contains(args[1].toLowerCase(Locale.ROOT))) {
+                    say(sender, "No effect called " + args[1] + ". Have: " + String.join(", ", engine.effectNames()));
+                    return true;
+                }
+                double size = args.length > 2 ? parse(args[2], 1) : 1;
+                Location at = placeAt(p);
+                if (at == null) at = p.getEyeLocation().add(p.getEyeLocation().getDirection().multiply(3));
+                placedEffects.add(engine.effect(args[1].toLowerCase(Locale.ROOT), at.add(0, size / 2, 0), size));
             }
             case "reload" -> {
                 say(sender, "Baking models...");
@@ -140,7 +172,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                         m.manifest.models.size(), m.manifest.texels / 1e6));
             }
             default -> {
-                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | info [model] | reload | pack");
+                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | info [model] | effect <name> [size] | reload | pack");
                 say(sender, "Look at a placed model to remove, scale, rotate or animate it.");
             }
         }
@@ -246,6 +278,9 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
             for (String s : SUBS) if (s.startsWith(args[0].toLowerCase(Locale.ROOT))) out.add(s);
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("place") || args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("info"))) {
             for (String m : engine.loadedModels().keySet()) if (m.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(m);
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("effect")) {
+            for (String m : engine.effectNames()) if (m.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(m);
+            if ("clear".startsWith(args[1].toLowerCase(Locale.ROOT))) out.add("clear");
         } else if (args.length == 2 && args[0].equalsIgnoreCase("state") && sender instanceof Player p) {
             Instance i = lookedAt(p);
             if (i != null) for (String s : i.model.states()) if (s.startsWith(args[1])) out.add(s);

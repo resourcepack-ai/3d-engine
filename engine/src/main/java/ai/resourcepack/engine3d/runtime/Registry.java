@@ -98,10 +98,15 @@ final class Registry {
                         for (Path p : old.toList()) if (Files.isRegularFile(p)) Files.delete(p);
                     }
                     Files.createDirectories(dir);
+                    manifest.item = spec.item != null;
                     for (var e : baked.models().entrySet()) {
                         ObjCubed.Result r = e.getValue();
+                        String tex = PackBuilder.NAMESPACE + ":item/" + name + "/" + e.getKey();
                         Files.write(dir.resolve(e.getKey() + ".png"), r.png());
-                        Files.writeString(dir.resolve(e.getKey() + ".json"), r.model(PackBuilder.NAMESPACE + ":item/" + name + "/" + e.getKey()));
+                        Files.writeString(dir.resolve(e.getKey() + ".json"), r.model(tex));
+                        if (spec.item != null)
+                            for (String slot : ObjCubed.SLOTS)
+                                Files.writeString(dir.resolve(e.getKey() + "@" + slot + ".json"), r.slotModel(tex, slot, spec.item.get(slot)));
                     }
                     Files.writeString(mf, manifest.toJson());
                     log.info(String.format("Baked %s in %.1fs", name, (System.nanoTime() - t0) / 1e9));

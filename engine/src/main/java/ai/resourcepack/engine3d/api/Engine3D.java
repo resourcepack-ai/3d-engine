@@ -67,6 +67,15 @@ public interface Engine3D {
      */
     org.bukkit.inventory.ItemStack item(String model, String state);
 
+    /** The shader effects loaded from {@code plugins/3DEngine/effects/}. */
+    java.util.Set<String> effects();
+
+    /** Puts effect {@code name} in the world, centred at {@code at}, {@code size} blocks across. */
+    EffectInstance effect(String name, Location at, double size);
+
+    /** Launches effect {@code name} from {@code at} at {@code velocity} (blocks per tick), flown by the engine. */
+    Particle particle(String name, Location at, org.bukkit.util.Vector velocity, Particle.Options options);
+
     Collection<ModelInstance> instances();
 
     /** The instance drawn by {@code entity} (its display, or a mover's brain). */

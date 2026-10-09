@@ -50,6 +50,7 @@ public final class Engine implements Listener {
     private final Path jar;
     private final Path folder;
     private final Registry registry;
+    private final Effects effects;
     private PackServer server;
     private PackBuilder.Pack pack;
     private String packUrl;
@@ -66,6 +67,7 @@ public final class Engine implements Listener {
         this.jar = jar;
         this.folder = plugin.getDataFolder().toPath().resolve("models");
         this.registry = new Registry(folder, plugin.getDataFolder().toPath().resolve("cache"), plugin.getLogger());
+        this.effects = new Effects(plugin.getDataFolder().toPath().resolve("effects"), plugin.getLogger());
     }
 
     public void enable() {
@@ -107,6 +109,7 @@ public final class Engine implements Listener {
 
     public void disable() {
         if (server != null) server.stop();
+        effects.clear();
         for (Instance i : new ArrayList<>(instances.values())) {
             if (i.mover != null) i.mover.removeBrain();
             if (!i.display.isPersistent()) i.display.remove();
@@ -126,12 +129,13 @@ public final class Engine implements Listener {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 Registry.Loaded loaded = registry.load();
+                Effects.Linked linked = effects.link(plugin.getClass().getClassLoader());
                 FileConfiguration c = plugin.getConfig();
                 List<Integer> f = c.getIntegerList("pack.format");
                 int[] format = f.size() >= 2 ? new int[]{f.get(0), f.get(1)} : new int[]{97, 1};
-                PackBuilder.Pack built = PackBuilder.build(jar, loaded.entries(), format, c.getString("pack.description", "3D Engine models"));
+                PackBuilder.Pack built = PackBuilder.build(jar, loaded.entries(), linked.files(), format, c.getString("pack.description", "3D Engine models"));
                 Files.write(plugin.getDataFolder().toPath().resolve("pack.zip"), built.zip());
-                Bukkit.getScheduler().runTask(plugin, () -> finishLoad(loaded, built, to));
+                Bukkit.getScheduler().runTask(plugin, () -> finishLoad(loaded, linked, built, to));
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Loading models failed", e);
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -142,9 +146,13 @@ public final class Engine implements Listener {
         });
     }
 
-    private void finishLoad(Registry.Loaded loaded, PackBuilder.Pack built, CommandSender to) {
+    private void finishLoad(Registry.Loaded loaded, Effects.Linked linked, PackBuilder.Pack built, CommandSender to) {
         models = Collections.unmodifiableMap(new LinkedHashMap<>(loaded.models()));
-        lastErrors = loaded.errors();
+        List<String> errors = new ArrayList<>(loaded.errors());
+        errors.addAll(linked.errors());
+        lastErrors = errors;
+        effects.clear();
+        effects.use(linked.index());
         boolean changed = pack == null || !pack.hex().equals(built.hex());
         pack = built;
         if (server != null) server.serve(built);
@@ -160,7 +168,8 @@ public final class Engine implements Listener {
         if (changed && plugin.getConfig().getBoolean("pack.send", true)) for (Player p : Bukkit.getOnlinePlayers()) send(p);
         ready = true;
         loading = false;
-        to.sendMessage(String.format("3D Engine: %d model%s ready%s (pack %.1f MB)", models.size(), models.size() == 1 ? "" : "s",
+        to.sendMessage(String.format("3D Engine: %d model%s and %d effect%s ready%s (pack %.1f MB)", models.size(), models.size() == 1 ? "" : "s",
+                linked.index().size(), linked.index().size() == 1 ? "" : "s",
                 lastErrors.isEmpty() ? "" : ", " + lastErrors.size() + " failed", built.zip().length / 1048576.0));
         for (String e : lastErrors) to.sendMessage("  " + e);
         for (Runnable r : new ArrayList<>(readyTasks)) {
@@ -253,6 +262,19 @@ public final class Engine implements Listener {
         return Animator.item(name, s.model, 0);
     }
 
+    public java.util.Set<String> effectNames() {
+        return effects.names();
+    }
+
+    public ai.resourcepack.engine3d.api.EffectInstance effect(String name, Location at, double size) {
+        return effects.spawn(name, at, size);
+    }
+
+    public ai.resourcepack.engine3d.api.Particle particle(String name, Location at, org.bukkit.util.Vector velocity,
+                                                          ai.resourcepack.engine3d.api.Particle.Options options) {
+        return effects.particle(name, at, velocity, options == null ? new ai.resourcepack.engine3d.api.Particle.Options() : options);
+    }
+
     public Collection<ModelInstance> instances() {
         return Collections.unmodifiableCollection(new ArrayList<>(instances.values()));
     }
@@ -274,6 +296,7 @@ public final class Engine implements Listener {
     }
 
     private void tick() {
+        effects.tick();
         for (Steering s : new ArrayList<>(movers)) {
             if (!s.valid()) {
                 movers.remove(s);

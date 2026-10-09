@@ -43,7 +43,7 @@ public final class PackBuilder {
         return NAMESPACE + ":" + name + "/" + id;
     }
 
-    public static Pack build(Path jar, List<Entry> models, int[] format, String description) throws IOException {
+    public static Pack build(Path jar, List<Entry> models, java.util.Map<String, byte[]> extras, int[] format, String description) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             put(zip, "pack.mcmeta", ("{\"pack\":{\"min_format\":[" + format[0] + "," + format[1] + "],\"max_format\":[" + format[0] + "," + format[1]
@@ -58,13 +58,29 @@ public final class PackBuilder {
                     }
                 }
             }
+            for (var e : extras.entrySet()) put(zip, e.getKey(), e.getValue());
             for (Entry m : models) {
                 for (String id : m.manifest().models.keySet()) {
                     String path = m.name() + "/" + id;
                     put(zip, "assets/" + NAMESPACE + "/textures/item/" + path + ".png", Files.readAllBytes(m.dir().resolve(id + ".png")));
                     put(zip, "assets/" + NAMESPACE + "/models/item/" + path + ".json", Files.readAllBytes(m.dir().resolve(id + ".json")));
-                    String item = "{\"model\":{\"type\":\"minecraft:model\",\"model\":\"" + NAMESPACE + ":item/" + path
-                            + "\",\"tints\":[{\"type\":\"minecraft:custom_model_data\",\"index\":0,\"default\":-1}]},\"hand_animation_on_swap\":false}";
+                    String tints = "\"tints\":[{\"type\":\"minecraft:custom_model_data\",\"index\":0,\"default\":-1}]";
+                    String neutral = "{\"type\":\"minecraft:model\",\"model\":\"" + NAMESPACE + ":item/" + path + "\"," + tints + "}";
+                    String body = neutral;
+                    if (m.manifest().item) {
+                        // A held item: a model per display context, each calibrated for it.
+                        StringBuilder cases = new StringBuilder();
+                        for (String slot : ai.resourcepack.engine3d.bake.ObjCubed.SLOTS) {
+                            Path f = m.dir().resolve(id + "@" + slot + ".json");
+                            if (!Files.exists(f)) continue;
+                            put(zip, "assets/" + NAMESPACE + "/models/item/" + path + "_" + slot + ".json", Files.readAllBytes(f));
+                            if (cases.length() > 0) cases.append(',');
+                            cases.append("{\"when\":\"").append(slot).append("\",\"model\":{\"type\":\"minecraft:model\",\"model\":\"")
+                                    .append(NAMESPACE).append(":item/").append(path).append('_').append(slot).append("\",").append(tints).append("}}");
+                        }
+                        body = "{\"type\":\"minecraft:select\",\"property\":\"minecraft:display_context\",\"cases\":[" + cases + "],\"fallback\":" + neutral + "}";
+                    }
+                    String item = "{\"model\":" + body + ",\"hand_animation_on_swap\":false}";
                     put(zip, "assets/" + NAMESPACE + "/items/" + path + ".json", item.getBytes(StandardCharsets.UTF_8));
                 }
             }

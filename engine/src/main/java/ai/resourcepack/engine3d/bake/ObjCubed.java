@@ -46,23 +46,79 @@ public final class ObjCubed {
     public record Result(byte[] png, int width, int height, int faces, int frames, JsonArray elements) {
         /** The item model, its texture named {@code textureRef} (e.g. {@code 3dengine:item/dog/idle}). */
         public String model(String textureRef) {
+            return slotModel(textureRef, null, null);
+        }
+
+        /**
+         * The model a held item uses in display context {@code slot} (null for
+         * the neutral one every other context falls back to), with
+         * {@code transform} (rotation, translation, scale: a block model's
+         * display entry) for that context.
+         *
+         * obj³'s per-slot calibration: dropped and shelved items sit half a
+         * block lower than everything else, so their carrier elements are
+         * raised 8 units; and the slots that need the shader to know which
+         * context it is in (both first-person hands, ground, shelf) carry a
+         * marker id in the midpoint of every carrier face's U range, which
+         * indexes the table row 1 of the texture holds.
+         */
+        public String slotModel(String textureRef, String slot, double[][] transform) {
             JsonObject textures = new JsonObject();
             textures.addProperty("0", textureRef);
             textures.addProperty("particle", textureRef);
-            JsonObject identity = new JsonObject();
-            identity.add("rotation", array(0, 0, 0));
-            identity.add("translation", array(0, 0, 0));
-            identity.add("scale", array(1, 1, 1));
             JsonObject display = new JsonObject();
-            for (String slot : new String[]{"head", "fixed", "thirdperson_righthand", "thirdperson_lefthand", "firstperson_righthand", "firstperson_lefthand", "ground", "on_shelf"})
-                display.add(slot, identity);
+            for (String s : SLOTS) display.add(s, display(s.equals(slot) ? transform : null));
             JsonObject model = new JsonObject();
             model.add("textures", textures);
-            model.add("elements", elements);
+            model.add("elements", slot == null ? elements : calibrated(slot));
             model.add("display", display);
             return model.toString();
         }
+
+        private JsonArray calibrated(String slot) {
+            int lift = slot.equals("ground") || slot.equals("on_shelf") ? 8 : 0;
+            int id = switch (slot) {
+                case "firstperson_righthand" -> 1;
+                case "firstperson_lefthand" -> 2;
+                case "ground" -> 3;
+                case "on_shelf" -> 4;
+                default -> 0;
+            };
+            if (lift == 0 && id == 0) return elements;
+            JsonArray out = new JsonArray();
+            for (var e : elements) {
+                JsonObject el = e.getAsJsonObject().deepCopy();
+                if (lift != 0) {
+                    for (String k : new String[]{"from", "to"}) {
+                        JsonArray v = el.getAsJsonArray(k);
+                        v.set(1, new com.google.gson.JsonPrimitive(v.get(1).getAsDouble() + lift));
+                    }
+                }
+                if (id != 0) {
+                    JsonObject north = el.getAsJsonObject("faces").getAsJsonObject("north");
+                    JsonArray uv = north.getAsJsonArray("uv");
+                    double u0 = uv.get(0).getAsDouble(), u1 = uv.get(2).getAsDouble();
+                    double texel = (u1 - u0) / 0.8;
+                    double mid = u0 - 0.1 * texel + (0.5 + id * 0.035) * texel;
+                    uv.set(0, new com.google.gson.JsonPrimitive(mid - 0.2 * texel));
+                    uv.set(2, new com.google.gson.JsonPrimitive(mid + 0.2 * texel));
+                }
+                out.add(el);
+            }
+            return out;
+        }
+
+        private static JsonObject display(double[][] t) {
+            JsonObject d = new JsonObject();
+            d.add("rotation", array(t != null ? t[0] : new double[]{0, 0, 0}));
+            d.add("translation", array(t != null ? t[1] : new double[]{0, 0, 0}));
+            d.add("scale", array(t != null ? t[2] : new double[]{1, 1, 1}));
+            return d;
+        }
     }
+
+    /** The display contexts a held item has a model of its own for. */
+    public static final String[] SLOTS = {"thirdperson_righthand", "thirdperson_lefthand", "firstperson_righthand", "firstperson_lefthand", "head", "ground", "fixed", "on_shelf"};
 
     /** How the shader reads its clock from the item's tint colour. */
     public enum Clock {

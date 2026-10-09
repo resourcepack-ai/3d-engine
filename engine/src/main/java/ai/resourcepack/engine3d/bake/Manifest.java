@@ -18,7 +18,7 @@ import java.util.Map;
 public final class Manifest {
 
     /** Bumped whenever the bake's output changes, so old caches are rebuilt. */
-    public static final int BAKE_VERSION = 1;
+    public static final int BAKE_VERSION = 2;
 
     public String name;
     public String hash;
@@ -31,6 +31,8 @@ public final class Manifest {
     public Map<String, Out> transitions = new LinkedHashMap<>();
     public Map<String, Model> models = new LinkedHashMap<>();
     public Map<String, Object> locomotion = new LinkedHashMap<>();
+    /** Held as an item: every game model has a model per hand and slot (see ObjCubed.Result#slotModel). */
+    public boolean item;
     /** The texture height of every game model, summed: what the model costs the client's item atlas. */
     public long texels;
 

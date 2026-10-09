@@ -1,2 +1,2 @@
 rootProject.name = '3d-engine'
-include 'engine', 'pets'
+include 'engine', 'pets', 'flamethrower'
