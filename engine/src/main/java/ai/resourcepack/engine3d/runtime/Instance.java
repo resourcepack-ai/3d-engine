@@ -201,18 +201,6 @@ final class Instance implements ModelInstance {
         display.setInterpolationDelay(0);
         display.setInterpolationDuration(2);
         display.setTransformation(new Transformation(new Vector3f(), turn, new Vector3f(s, s, s), new Quaternionf()));
-        drawBox(display);
-        if (head != null) drawBox(head);
-    }
-
-    /**
-     * The box the client culls a display by. It is nothing by default, so a
-     * model is dropped the moment the point it stands on leaves the screen,
-     * which for a car or a statue is while most of it is still in view.
-     */
-    private void drawBox(ItemDisplay d) {
-        d.setDisplayWidth((float) (model.manifest.radius * 2 * scale + 0.5));
-        d.setDisplayHeight((float) (model.manifest.height * scale + 0.5));
     }
 
     // ---- hitboxes ---------------------------------------------------------------------
