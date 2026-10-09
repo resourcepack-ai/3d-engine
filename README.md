@@ -6,6 +6,11 @@ animations, in vanilla Minecraft with no mods. Furniture, statues, vehicles,
 props, creatures: anything you can download from Sketchfab or export from
 Blender.
 
+A Sketchfab download can go in as it comes: drop the `.zip` in the models
+folder and the engine unpacks it into a folder of the same name, and a file
+called `scene.gltf` (every Sketchfab download's) takes its folder's name. Its
+`.yml` is `scene.yml`, beside it.
+
 The engine bakes each file into item models drawn by obj³'s core shaders,
 builds a resource pack and serves it to players itself. Bakes are cached, so a
 restart only bakes what changed.

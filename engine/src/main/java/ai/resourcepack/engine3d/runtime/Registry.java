@@ -46,6 +46,7 @@ final class Registry {
     /** Bakes (or loads from cache) every model. Runs off the main thread. */
     Loaded load() throws IOException {
         Files.createDirectories(folder);
+        unzipDownloads();
         List<Path> files;
         try (Stream<Path> s = Files.walk(folder)) {
             files = s.filter(Files::isRegularFile).filter(p -> EXTENSIONS.contains(ext(p))).sorted().toList();
@@ -121,10 +122,49 @@ final class Registry {
         return new Loaded(models, entries, errors);
     }
 
-    /** The model's name: its path in the models folder, lower case, without the extension. */
+    /**
+     * A .zip dropped in the models folder (what Sketchfab and most model sites
+     * hand out) is unpacked into a folder of the same name beside it, once: the
+     * folder existing is what says it has been done, so deleting the folder
+     * unpacks it again. Entries that would land outside that folder are skipped.
+     */
+    private void unzipDownloads() throws IOException {
+        List<Path> zips;
+        try (Stream<Path> s = Files.walk(folder)) {
+            zips = s.filter(Files::isRegularFile).filter(p -> ext(p).equals("zip")).sorted().toList();
+        }
+        for (Path zip : zips) {
+            Path into = zip.resolveSibling(base(zip));
+            if (Files.exists(into)) continue;
+            int count = 0;
+            try (java.util.zip.ZipInputStream in = new java.util.zip.ZipInputStream(Files.newInputStream(zip))) {
+                for (java.util.zip.ZipEntry e; (e = in.getNextEntry()) != null; ) {
+                    Path to = into.resolve(e.getName()).normalize();
+                    if (!to.startsWith(into)) continue;
+                    if (e.isDirectory()) Files.createDirectories(to);
+                    else {
+                        Files.createDirectories(to.getParent());
+                        Files.copy(in, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        count++;
+                    }
+                }
+            } catch (IOException e) {
+                log.warning("Couldn't unpack " + folder.relativize(zip) + ": " + e.getMessage());
+                continue;
+            }
+            log.info("Unpacked " + folder.relativize(zip) + " (" + count + " files)");
+        }
+    }
+
+    /**
+     * The model's name: its path in the models folder, lower case, without the
+     * extension; a file called {@code scene} (every Sketchfab download's) is
+     * named after its folder instead.
+     */
     String nameOf(Path f) {
         String rel = folder.relativize(f).toString().replace('\\', '/');
         rel = rel.substring(0, rel.length() - ext(f).length() - 1);
+        if (rel.endsWith("/scene")) rel = rel.substring(0, rel.length() - "/scene".length());
         return rel.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9/._-]+", "_");
     }
 
