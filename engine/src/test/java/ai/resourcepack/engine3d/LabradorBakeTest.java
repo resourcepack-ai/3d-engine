@@ -51,6 +51,15 @@ class LabradorBakeTest {
             for (int f = 0; f < d.frames && tiles.size() < 4; f += step) tiles.add(d.render(f, 125));
             ImageIO.write(Preview.sheet(tiles, 4), "png", out.resolve("preview-" + id + ".png").toFile());
         }
+        // The head drawn apart, turned on its neck as the runtime turns it.
+        assertEquals("Head", m.lookBone);
+        assertTrue(baked.models().containsKey("idle" + Manifest.LOOK) && baked.models().containsKey(m.icon));
+        Decoded body = Decoded.read(baked.models().get("idle").png()), head = Decoded.read(baked.models().get("idle" + Manifest.LOOK).png());
+        float[] pivot = m.models.get("idle").points.get(Manifest.LOOK_PIVOT).get(0);
+        List<BufferedImage> looks = new ArrayList<>();
+        for (double[] turn : new double[][]{{0, 0}, {50, 0}, {-50, 0}, {30, 25}})
+            looks.add(body.renderWith(head, 0, 30, pivot, turn[0], turn[1]));
+        ImageIO.write(Preview.sheet(looks, 4), "png", out.resolve("preview-look.png").toFile());
         System.out.println("previews in " + out.toAbsolutePath());
     }
 
@@ -112,6 +121,43 @@ class LabradorBakeTest {
                 colours.add(new int[]{r / 4, g / 4, b / 4});
             }
             return Preview.render(positions, quads, colours, yaw, 320, 240);
+        }
+
+        /** This and {@code head} together, the head turned {@code yaw} and {@code pitch} degrees about {@code pivot}. */
+        BufferedImage renderWith(Decoded head, int frame, double view, float[] pivot, double yaw, double pitch) {
+            List<double[]> positions = new ArrayList<>();
+            List<int[]> quads = new ArrayList<>();
+            List<int[]> colours = new ArrayList<>();
+            add(frame, positions, quads, colours, null, 0, 0);
+            head.add(frame, positions, quads, colours, pivot, yaw, pitch);
+            return Preview.render(positions, quads, colours, view, 480, 360);
+        }
+
+        void add(int frame, List<double[]> positions, List<int[]> quads, List<int[]> colours, float[] pivot, double yaw, double pitch) {
+            double a = Math.toRadians(yaw), b = Math.toRadians(pitch);
+            for (int fc = 0; fc < faces; fc++) {
+                int[] q = new int[4];
+                int r = 0, g = 0, bl = 0;
+                for (int k = 0; k < 4; k++) {
+                    q[k] = positions.size();
+                    double[] v = pos[frame][fc * 4 + k];
+                    if (pivot != null) {
+                        // Front is -z here: pitch up lifts -z, then yaw turns about y.
+                        double x = v[0] - pivot[0], y = v[1] - pivot[1], z = v[2] - pivot[2];
+                        double y1 = y * Math.cos(b) - z * Math.sin(b), z1 = y * Math.sin(b) + z * Math.cos(b);
+                        double x2 = x * Math.cos(a) + z1 * Math.sin(a), z2 = -x * Math.sin(a) + z1 * Math.cos(a);
+                        v = new double[]{x2 + pivot[0], y1 + pivot[1], z2 + pivot[2]};
+                    }
+                    positions.add(v);
+                    double[] t = uv[corners[frame][fc * 4 + k][1]];
+                    int[] c = px(img, Math.min(tw - 1, (int) (t[0] * tw)), texTop + Math.max(0, Math.min(th - 1, (int) (t[1] * th))));
+                    r += c[0];
+                    g += c[1];
+                    bl += c[2];
+                }
+                quads.add(q);
+                colours.add(new int[]{r / 4, g / 4, bl / 4});
+            }
         }
 
         static int[] px(BufferedImage img, int x, int y) {

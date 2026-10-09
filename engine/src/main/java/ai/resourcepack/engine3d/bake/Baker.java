@@ -211,6 +211,48 @@ public final class Baker {
             radius = Math.max(radius, Math.hypot(q[0], q[2]));
         }
         manifest.radius = radius;
+        manifest.bounds = new double[]{Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+        for (double[] p : standing) {
+            double[] q = place.at(p);
+            for (int k = 0; k < 3; k++) {
+                manifest.bounds[k] = Math.min(manifest.bounds[k], q[k]);
+                manifest.bounds[k + 3] = Math.max(manifest.bounds[k + 3], q[k]);
+            }
+        }
+
+        // Seats on a bone ride it: given in blocks around the placed model, held in the bone's own space.
+        for (var e : spec.seats.entrySet()) {
+            if (e.getValue().bone() == null) continue;
+            int b = bone(e.getValue().bone());
+            double[] at = e.getValue().at();
+            double[] file = unplace(new double[]{at[0], at[1] + LIFT, -at[2]}, s, cx, cz, floor, cos, sin);
+            points.put(Manifest.SEAT + e.getKey(), new int[]{b});
+            pointLocal.put(Manifest.SEAT + e.getKey(), Mat.xform(Mat.invert(restWorld[b]), file));
+        }
+
+        // A head that turns on its own is drawn apart from the body, on its neck.
+        int[][] bodyFaces = faces, headFaces = null;
+        if (spec.look != null && spec.look.bone != null) {
+            if (spec.item != null) log.accept(name + ": look is ignored on a held item");
+            else {
+                int head = bone(spec.look.bone);
+                double[] share = headShare(head, keep);
+                List<int[]> body = new ArrayList<>(), top = new ArrayList<>();
+                for (int[] f : faces) {
+                    double w = 0;
+                    for (int v : f) w += share[v];
+                    (w / f.length >= 0.5 ? top : body).add(f);
+                }
+                if (top.isEmpty()) throw new IOException("look: nothing hangs off " + spec.look.bone);
+                if (body.isEmpty()) throw new IOException("look: everything hangs off " + spec.look.bone + "; pick the head's bone");
+                bodyFaces = body.toArray(new int[0][]);
+                headFaces = top.toArray(new int[0][]);
+                manifest.lookBone = spec.look.bone;
+                points.put(Manifest.LOOK_PIVOT, new int[]{head});
+                pointLocal.put(Manifest.LOOK_PIVOT, new double[]{0, 0, 0});
+                log.accept(String.format("%s: head %d faces, body %d", name, headFaces.length, bodyFaces.length));
+            }
+        }
         manifest.locomotion = spec.locomotion;
         manifest.defaultState = spec.defaultState != null ? spec.defaultState : states.containsKey("idle") ? "idle" : states.keySet().iterator().next();
         if (!states.containsKey(manifest.defaultState)) throw new IOException("default-state " + manifest.defaultState + " is not a state");
@@ -229,7 +271,7 @@ public final class Baker {
                 frames.add(placed(l, keep, place));
                 pts.add(pointsAt(l, place));
             }
-            models.put(e.getKey(), encode(manifest, e.getKey(), "loop", frames, ticks, pts, uvs, faces, atlas));
+            encode(models, manifest, e.getKey(), "loop", frames, ticks, pts, uvs, bodyFaces, headFaces, atlas);
             Manifest.State ms = new Manifest.State();
             ms.model = e.getKey();
             ms.ticks = ticks;
@@ -266,11 +308,17 @@ public final class Baker {
                 ranges.add(r);
             }
             String id = t.from() + "_to_" + t.to();
-            models.put(id, encode(manifest, id, "oneshot", strip, strip.size(), pts, uvs, faces, atlas));
+            encode(models, manifest, id, "oneshot", strip, strip.size(), pts, uvs, bodyFaces, headFaces, atlas);
             Manifest.Pair pair = new Manifest.Pair();
             pair.model = id;
             pair.ranges = ranges;
             manifest.transitions.computeIfAbsent(t.from(), k -> new Manifest.Out()).to.put(t.to(), pair);
+        }
+        if (headFaces != null) {
+            // The whole model, still, for its icon.
+            Rig.Local[] l = stateLocals(states.get(manifest.defaultState), 0);
+            manifest.icon = "icon.full";
+            encodeOne(models, manifest, manifest.icon, "icon", java.util.Collections.singletonList(placed(l, keep, place)), 1, java.util.Collections.singletonList(Map.<String, double[]>of()), uvs, faces, atlas, false);
         }
         long texels = 0;
         for (ObjCubed.Result r : models.values()) texels += (long) r.width() * r.height();
@@ -279,8 +327,14 @@ public final class Baker {
         return new Baked(manifest, models);
     }
 
-    private ObjCubed.Result encode(Manifest manifest, String id, String kind, List<double[][]> frames, int ticks, List<Map<String, double[]>> pts,
-                                   double[][] uvs, int[][] faces, Atlas atlas) {
+    private void encode(Map<String, ObjCubed.Result> models, Manifest manifest, String id, String kind, List<double[][]> frames, int ticks,
+                        List<Map<String, double[]>> pts, double[][] uvs, int[][] body, int[][] head, Atlas atlas) {
+        encodeOne(models, manifest, id, kind, frames, ticks, pts, uvs, body, atlas, true);
+        if (head != null) encodeOne(models, manifest, id + Manifest.LOOK, "look", frames, ticks, pts, uvs, head, atlas, false);
+    }
+
+    private void encodeOne(Map<String, ObjCubed.Result> models, Manifest manifest, String id, String kind, List<double[][]> frames, int ticks,
+                           List<Map<String, double[]>> pts, double[][] uvs, int[][] faces, Atlas atlas, boolean withPoints) {
         // As an icon, fitted to the slot unless the spec says otherwise.
         double icon = spec.iconScale != null ? spec.iconScale : Math.min(4, 0.9 / Math.max(0.05, Math.max(manifest.height, manifest.radius * 2)));
         ObjCubed.Result r = ObjCubed.encode(frames, uvs, faces, atlas.image, ticks, ObjCubed.Clock.TIME, icon);
@@ -288,7 +342,7 @@ public final class Baker {
         m.kind = kind;
         m.frames = frames.size();
         m.ticks = ticks;
-        for (String p : points.keySet()) {
+        if (withPoints) for (String p : points.keySet()) {
             List<float[]> list = new ArrayList<>();
             for (Map<String, double[]> f : pts) {
                 double[] q = f.get(p);
@@ -297,7 +351,36 @@ public final class Baker {
             m.points.put(p, list);
         }
         manifest.models.put(id, m);
-        return r;
+        models.put(id, r);
+    }
+
+    /** Per kept vertex, how much of it hangs off {@code head} or anything below it. */
+    private double[] headShare(int head, int[] keep) {
+        boolean[] under = new boolean[rig.parent.length];
+        for (int n = 0; n < under.length; n++)
+            for (int a = n; a >= 0; a = rig.parent[a])
+                if (a == head) {
+                    under[n] = true;
+                    break;
+                }
+        double[] out = new double[keep.length];
+        for (int i = 0; i < keep.length; i++) {
+            Rig.Vert v = rig.verts.get(keep[i]);
+            double w = 0, all = 0;
+            for (int k = 0; k < v.weights.length; k++) {
+                all += v.weights[k];
+                if (v.weights[k] > 0 && under[rig.slotNode[v.joints[k]]]) w += v.weights[k];
+            }
+            out[i] = all > 0 ? w / all : 0;
+        }
+        return out;
+    }
+
+    /** The inverse of the placement: a point in the placed model back in the file's own space. */
+    private double[] unplace(double[] q, double s, double cx, double cz, double floor, double cos, double sin) {
+        double x = q[0] - spec.offset[0], y = q[1] - spec.offset[1], z = q[2] - spec.offset[2];
+        double ux = x * cos - z * sin, uz = x * sin + z * cos;
+        return new double[]{ux / s + cx, (y - LIFT) / s + floor, uz / s + cz};
     }
 
     @FunctionalInterface

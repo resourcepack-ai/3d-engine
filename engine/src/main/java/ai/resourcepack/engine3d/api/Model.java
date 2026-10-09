@@ -28,6 +28,15 @@ public interface Model {
     /** The {@code locomotion:} block of its spec, as written: state names and speeds for a {@link Mover}. */
     Map<String, Object> locomotion();
 
+    /** Its seats, in the order a right-click fills them. */
+    java.util.List<String> seats();
+
+    /** Whether it turns to look at players (its head alone, or the whole model). */
+    boolean looks();
+
+    /** Whether a rider in its driving seat steers it. */
+    boolean drivable();
+
     /** Its spec file's other keys, for plugins that keep their own settings beside a model. */
     Map<String, Object> settings();
 }

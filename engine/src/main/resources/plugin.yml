@@ -19,3 +19,6 @@ permissions:
   3dengine.place:
     description: Place models with a model item.
     default: op
+  3dengine.ride:
+    description: Sit in a model's seats by right-clicking it.
+    default: true

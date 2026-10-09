@@ -1,7 +1,11 @@
 package ai.resourcepack.engine3d.api;
 
 import org.bukkit.Location;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
+
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * One model in the world, drawn by an item display.
@@ -44,6 +48,39 @@ public interface ModelInstance {
     double scale();
 
     void scale(double scale);
+
+    // ---- seats ------------------------------------------------------------------
+
+    /** Who sits where: seat name to rider, occupied seats only. */
+    Map<String, Entity> riders();
+
+    /** Seats {@code rider} in {@code seat} (null = the first free one); false if it is taken, unknown or a plugin said no. */
+    boolean mount(Entity rider, String seat);
+
+    /** Gets {@code rider} out of whichever seat they are in, beside the model. */
+    void dismount(Entity rider);
+
+    // ---- looking ----------------------------------------------------------------
+
+    /** Keeps looking at {@code target} (within the model's range and angles) until told otherwise. */
+    void lookAt(Entity target);
+
+    /** Looks at a fixed point. */
+    void lookAt(Location at);
+
+    /** Back to the default: the nearest player in range. */
+    void lookAround();
+
+    /** Looks straight ahead and stops looking at anything. */
+    void lookAway();
+
+    // ---- hitboxes ---------------------------------------------------------------
+
+    /** The invisible boxes that make it clickable, one or more. Empty if it has none. */
+    Collection<Entity> hitboxes();
+
+    /** Turns its hitboxes (and solid blocks) on or off. */
+    void hitbox(boolean enabled);
 
     /** Saved with its chunk, as a placed model is. */
     boolean persistent();

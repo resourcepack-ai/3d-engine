@@ -36,7 +36,7 @@ import java.util.Locale;
 final class Commands implements CommandExecutor, TabCompleter, Listener {
 
     private static final NamespacedKey PLACES = new NamespacedKey("3dengine", "places");
-    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "info", "effect", "reload", "pack");
+    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "sit", "info", "effect", "reload", "pack");
 
     private final Engine engine;
     private final JavaPlugin plugin;
@@ -125,7 +125,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                 to.getInventory().addItem(placer(m));
                 say(sender, "Gave " + to.getName() + " a " + m.name() + ": right-click a block to place it.");
             }
-            case "remove", "scale", "rotate", "state" -> {
+            case "remove", "scale", "rotate", "state", "sit" -> {
                 Player p = player(sender);
                 if (p == null) return true;
                 Instance i = lookedAt(p);
@@ -149,6 +149,10 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                         l.setYaw(l.getYaw() + (float) parse(args[1], 0));
                         i.teleport(l);
                     }
+                    case "sit" -> {
+                        if (i.model.seats().isEmpty()) say(sender, i.model.name() + " has no seats.");
+                        else if (!i.mount(p, args.length > 1 ? args[1] : null)) say(sender, "No free seat" + (args.length > 1 ? " called " + args[1] : "") + ".");
+                    }
                     case "state" -> {
                         if (args.length < 2) return usage(sender, "/3d state <" + String.join("|", i.model.states()) + ">");
                         if (!i.model.states().contains(args[1])) {
@@ -170,9 +174,13 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                 say(sender, String.format("%s: %.2f tall, %.2f wide; states %s; points %s; %d game models, %.1f megatexels",
                         m.name(), m.height(), m.radius() * 2, String.join(", ", m.states()), m.points().isEmpty() ? "none" : String.join(", ", m.points()),
                         m.manifest.models.size(), m.manifest.texels / 1e6));
+                say(sender, String.format("seats %s%s; looks %s; %d hitbox%s%s",
+                        m.seats().isEmpty() ? "none" : String.join(", ", m.seats()), m.drivable() ? " (drivable from " + m.driverSeat() + ")" : "",
+                        m.spec.look == null ? "no" : m.spec.look.bone != null ? "with its " + m.spec.look.bone : "with its whole body",
+                        Instance.boxesOf(m).size(), Instance.boxesOf(m).size() == 1 ? "" : "es", m.spec.solid ? ", solid" : ""));
             }
             default -> {
-                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | info [model] | effect <name> [size] | reload | pack");
+                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | sit [seat] | info [model] | effect <name> [size] | reload | pack");
                 say(sender, "Look at a placed model to remove, scale, rotate or animate it.");
             }
         }
@@ -242,7 +250,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
 
     /** An item that places {@code m} where it's used; it shows the model itself in the inventory. */
     private static ItemStack placer(LoadedModel m) {
-        String still = m.manifest.states.get(m.defaultState()).model;
+        String still = m.manifest.icon != null ? m.manifest.icon : m.manifest.states.get(m.defaultState()).model;
         ItemStack item = Animator.item(m.name(), still, 0);
         ItemMeta meta = item.getItemMeta();
         meta.itemName(Component.text(m.name(), NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));

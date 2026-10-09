@@ -18,7 +18,7 @@ import java.util.Map;
 public final class Manifest {
 
     /** Bumped whenever the bake's output changes, so old caches are rebuilt. */
-    public static final int BAKE_VERSION = 2;
+    public static final int BAKE_VERSION = 3;
 
     public String name;
     public String hash;
@@ -33,8 +33,26 @@ public final class Manifest {
     public Map<String, Object> locomotion = new LinkedHashMap<>();
     /** Held as an item: every game model has a model per hand and slot (see ObjCubed.Result#slotModel). */
     public boolean item;
+    /**
+     * Its box at rest, in the model's own space (blocks, y up from half a block
+     * below the entity, front -z): min x, y, z, then max x, y, z.
+     */
+    public double[] bounds;
+    /**
+     * Set when the head turns on its own: every game model {@code id} then
+     * draws the body only, {@code id + LOOK} the head, and the point
+     * {@link #LOOK_PIVOT} is the neck it turns on.
+     */
+    public String lookBone;
+    /** The whole model at rest, for an icon, when the game models are split. */
+    public String icon;
     /** The texture height of every game model, summed: what the model costs the client's item atlas. */
     public long texels;
+
+    public static final String LOOK = ".look";
+    public static final String LOOK_PIVOT = "_look";
+    /** A seat that rides a bone is the point {@code SEAT + its name}. */
+    public static final String SEAT = "_seat:";
 
     public static final class State {
         public String model;
@@ -65,7 +83,7 @@ public final class Manifest {
     }
 
     public static final class Model {
-        /** "loop" or "oneshot". */
+        /** "loop", "oneshot", "look" (a head) or "icon". */
         public String kind;
         public int frames;
         public int ticks;

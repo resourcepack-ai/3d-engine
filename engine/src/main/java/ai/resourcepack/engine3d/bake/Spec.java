@@ -45,6 +45,18 @@ public final class Spec {
      * {@code display}. Contexts it doesn't name use the identity.
      */
     public Map<String, double[][]> item;
+    /** Turning to look at players: the head alone (with a bone) or the whole model; null = it doesn't. */
+    public Look look;
+    /** Places to sit, by name, in the order a right-click fills them. */
+    public Map<String, Seat> seats = new LinkedHashMap<>();
+    /** Whether it can be clicked and hit at all. */
+    public boolean hitbox = true;
+    /** Boxes as written; null = fitted to the model. */
+    public List<Box> hitboxes;
+    /** Placed models fill their boxes with barriers, so nothing walks through them. */
+    public boolean solid;
+    /** Ridden from a seat: where the rider looks, it goes. Null = it stays put. */
+    public Drive drive;
     /** The rest of the file, for plugins that keep their own settings beside a model. */
     public Map<String, Object> raw = new LinkedHashMap<>();
 
@@ -71,6 +83,42 @@ public final class Spec {
     }
 
     public record Transition(String from, String to, int frames) {
+    }
+
+    /**
+     * Where a model looks. With a {@code bone} the head (that bone and
+     * everything below it) turns on the neck while the rest plays on; without
+     * one the whole model turns. Angles are the most it turns either way.
+     */
+    public static final class Look {
+        public String bone;
+        public double yaw = 70, pitch = 35, range = 8, speed = 9;
+        /** States it looks in; null = all. */
+        public List<String> states;
+    }
+
+    /**
+     * A seat: {@code at} in blocks from the middle of the model's base (x to
+     * its right, y up, z forward), carried along by {@code bone} if it has one.
+     */
+    public record Seat(double[] at, String bone, boolean sitting) {
+    }
+
+    /** A box in blocks: the middle of its bottom face {@code at} (x right, y up, z forward), square {@code width}, {@code height} tall. */
+    public record Box(double[] at, double width, double height) {
+    }
+
+    public static final class Drive {
+        /** The seat whose rider steers; null = the first. */
+        public String seat;
+        /** Blocks per tick forward, sprinting, and backward. */
+        public double speed = 0.2, sprint = 0.32, back = 0.08;
+        /** Degrees per tick it turns towards where the rider looks. */
+        public double turn = 7;
+        /** Upward speed of a jump; 0 = it can't. */
+        public double jump = 0.42;
+        /** The invisible mob that walks it (its size decides what it fits through); null = by the model's size. */
+        public String brain;
     }
 
     public static Spec parse(String yaml) {
@@ -114,9 +162,57 @@ public final class Spec {
         } else if (Boolean.TRUE.equals(m.get("item"))) {
             s.item = new LinkedHashMap<>();
         }
+        if (m.get("look") instanceof Map<?, ?> lk) {
+            Look l = new Look();
+            if (lk.get("bone") != null) l.bone = String.valueOf(lk.get("bone"));
+            if (lk.containsKey("yaw")) l.yaw = num(lk.get("yaw"));
+            if (lk.containsKey("pitch")) l.pitch = num(lk.get("pitch"));
+            if (lk.containsKey("range")) l.range = num(lk.get("range"));
+            if (lk.containsKey("speed")) l.speed = num(lk.get("speed"));
+            if (lk.get("states") instanceof List<?> st) l.states = strings(st);
+            s.look = l;
+        } else if (Boolean.TRUE.equals(m.get("look"))) {
+            s.look = new Look();
+        } else if (m.get("look") instanceof String bone) {
+            s.look = new Look();
+            s.look.bone = bone;
+        }
+        if (m.get("seats") instanceof Map<?, ?> seats)
+            for (var e : seats.entrySet()) {
+                if (e.getValue() instanceof Map<?, ?> st)
+                    s.seats.put(String.valueOf(e.getKey()), new Seat(st.containsKey("at") ? vec(st.get("at")) : new double[]{0, 0, 0},
+                            st.get("bone") != null ? String.valueOf(st.get("bone")) : null, !"standing".equals(String.valueOf(st.get("pose")))));
+                else if (e.getValue() instanceof List<?> at)
+                    s.seats.put(String.valueOf(e.getKey()), new Seat(vec(at), null, true));
+            }
+        if (Boolean.FALSE.equals(m.get("hitbox"))) s.hitbox = false;
+        else if (m.get("hitbox") instanceof Map<?, ?> hb) s.hitboxes = List.of(box(hb));
+        if (m.get("hitboxes") instanceof List<?> l) {
+            s.hitboxes = new ArrayList<>();
+            for (Object o : l) if (o instanceof Map<?, ?> hb) s.hitboxes.add(box(hb));
+        }
+        if (Boolean.TRUE.equals(m.get("solid"))) s.solid = true;
+        if (m.get("drive") instanceof Map<?, ?> dr) {
+            Drive d = new Drive();
+            if (dr.get("seat") != null) d.seat = String.valueOf(dr.get("seat"));
+            if (dr.containsKey("speed")) d.speed = num(dr.get("speed"));
+            d.sprint = dr.containsKey("sprint") ? num(dr.get("sprint")) : Math.max(d.speed, d.speed * 1.6);
+            if (dr.containsKey("back")) d.back = num(dr.get("back"));
+            if (dr.containsKey("turn")) d.turn = num(dr.get("turn"));
+            if (dr.containsKey("jump")) d.jump = num(dr.get("jump"));
+            if (dr.get("brain") != null) d.brain = String.valueOf(dr.get("brain"));
+            s.drive = d;
+        } else if (Boolean.TRUE.equals(m.get("drive"))) {
+            s.drive = new Drive();
+        }
         if (m.get("locomotion") instanceof Map<?, ?> loco)
             for (var e : loco.entrySet()) s.locomotion.put(String.valueOf(e.getKey()), e.getValue());
         return s;
+    }
+
+    private static Box box(Map<?, ?> m) {
+        double[] at = m.containsKey("at") ? vec(m.get("at")) : new double[]{0, 0, 0};
+        return new Box(at, m.containsKey("width") ? num(m.get("width")) : 1, m.containsKey("height") ? num(m.get("height")) : 1);
     }
 
     private static State state(Object o) {

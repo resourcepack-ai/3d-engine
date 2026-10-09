@@ -57,6 +57,10 @@ public final class Engine implements Listener {
 
     private volatile Map<String, LoadedModel> models = Map.of();
     private final Map<UUID, Instance> instances = new LinkedHashMap<>();
+    /** Heads, hitboxes and seat mounts, to the model they belong to. */
+    private final Map<UUID, Instance> parts = new java.util.HashMap<>();
+    /** Barrier blocks of solid models, by world and block key. */
+    private final Map<UUID, Map<Long, Instance>> solidBlocks = new java.util.HashMap<>();
     private final List<Steering> movers = new ArrayList<>();
     private final List<Runnable> readyTasks = new ArrayList<>();
     private boolean ready, loading;
@@ -101,6 +105,7 @@ public final class Engine implements Listener {
             cmd.setTabCompleter(commands);
         }
         Bukkit.getPluginManager().registerEvents(commands, plugin);
+        Bukkit.getPluginManager().registerEvents(new Interactions(this), plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
         // On the first tick, so a plugin depending on this one has had its
         // onEnable to copy its own models in.
@@ -111,10 +116,13 @@ public final class Engine implements Listener {
         if (server != null) server.stop();
         effects.clear();
         for (Instance i : new ArrayList<>(instances.values())) {
+            i.removeParts();
             if (i.mover != null) i.mover.removeBrain();
             if (!i.display.isPersistent()) i.display.remove();
         }
         instances.clear();
+        parts.clear();
+        solidBlocks.clear();
         movers.clear();
     }
 
@@ -161,6 +169,7 @@ public final class Engine implements Listener {
             LoadedModel fresh = models.get(i.model.name());
             if (fresh == null) {
                 forget(i);
+                i.removeParts();
                 if (!i.display.isPersistent()) i.remove();
             } else i.rebind(fresh, now);
         }
@@ -237,14 +246,16 @@ public final class Engine implements Listener {
             Instance.setUp(x, persistent);
             if (persistent) x.getPersistentDataContainer().set(Instance.MODEL, PersistentDataType.STRING, name);
         });
-        Instance i = new Instance(m, d, m.defaultState(), to.getWorld().getGameTime());
+        Instance i = new Instance(this, m, d, m.defaultState(), to.getWorld().getGameTime());
         instances.put(d.getUniqueId(), i);
+        i.build();
+        callEvent(new ai.resourcepack.engine3d.api.event.ModelSpawnEvent(i));
         return i;
     }
 
     public Mover mover(ModelInstance body, EntityType brainType) {
         if (!(body instanceof Instance inst)) throw new IllegalArgumentException("Not a 3D Engine instance");
-        if (inst.mover != null) return inst.mover;
+        if (inst.mover != null && inst.mover.valid()) return inst.mover;
         Class<? extends Entity> type = brainType.getEntityClass();
         if (type == null || !Mob.class.isAssignableFrom(type)) throw new IllegalArgumentException(brainType + " can't walk: pick a mob");
         Location at = inst.location();
@@ -259,7 +270,8 @@ public final class Engine implements Listener {
         LoadedModel m = models.get(name);
         if (m == null) throw new IllegalArgumentException("No model called " + name);
         var s = m.manifest.states.get(state != null && m.manifest.states.containsKey(state) ? state : m.defaultState());
-        return Animator.item(name, s.model, 0);
+        // A model whose head is drawn apart shows whole as an item.
+        return Animator.item(name, m.manifest.icon != null ? m.manifest.icon : s.model, 0);
     }
 
     public java.util.Set<String> effectNames() {
@@ -291,10 +303,74 @@ public final class Engine implements Listener {
     }
 
     public Optional<ModelInstance> instance(Entity e) {
+        return Optional.ofNullable(owner(e));
+    }
+
+    /** The model {@code e} is, or is part of (its display, head, a hitbox, a seat, its brain); null if none. */
+    Instance owner(Entity e) {
         Instance i = instances.get(e.getUniqueId());
-        if (i != null) return Optional.of(i);
-        for (Steering s : movers) if (s.brain().equals(e)) return Optional.of(s.body());
-        return Optional.empty();
+        if (i == null) i = parts.get(e.getUniqueId());
+        if (i == null) for (Steering s : movers) if (s.brain().equals(e)) i = (Instance) s.body();
+        return i == null || i.removed() ? null : i;
+    }
+
+    void own(Entity part, Instance owner) {
+        parts.put(part.getUniqueId(), owner);
+    }
+
+    void disown(Entity part) {
+        parts.remove(part.getUniqueId());
+    }
+
+    /** Records which blocks are {@code owner}'s barriers (replacing what it had). */
+    void solid(Instance owner, long[] keys) {
+        Map<Long, Instance> world = solidBlocks.computeIfAbsent(owner.display.getWorld().getUID(), k -> new java.util.HashMap<>());
+        world.values().removeIf(x -> x == owner);
+        for (long k : keys) world.put(k, owner);
+    }
+
+    /** The solid model a block is part of, or null. */
+    Instance solidOwner(org.bukkit.block.Block b) {
+        Map<Long, Instance> world = solidBlocks.get(b.getWorld().getUID());
+        Instance i = world == null ? null : world.get(b.getBlockKey());
+        return i == null || i.removed() ? null : i;
+    }
+
+    JavaPlugin plugin() {
+        return plugin;
+    }
+
+    /** A server's own nudge to where riders sit, in blocks (seats.height-offset). */
+    double seatNudge() {
+        return plugin.getConfig().getDouble("seats.height-offset", 0);
+    }
+
+    void later(Runnable r) {
+        Bukkit.getScheduler().runTask(plugin, r);
+    }
+
+    void callEvent(org.bukkit.event.Event e) {
+        Bukkit.getPluginManager().callEvent(e);
+    }
+
+    /** Calls {@code e}; true unless a listener cancelled it. */
+    boolean call(org.bukkit.event.Event e) {
+        Bukkit.getPluginManager().callEvent(e);
+        return !(e instanceof org.bukkit.event.Cancellable c) || !c.isCancelled();
+    }
+
+    /** The mob that walks a driven model: as its spec says, or by its size. */
+    EntityType brainFor(Instance i, ai.resourcepack.engine3d.bake.Spec.Drive d) {
+        if (d.brain != null) {
+            try {
+                EntityType t = EntityType.valueOf(d.brain.toUpperCase(java.util.Locale.ROOT));
+                if (t.getEntityClass() != null && Mob.class.isAssignableFrom(t.getEntityClass())) return t;
+            } catch (IllegalArgumentException ignored) {
+            }
+            plugin.getLogger().warning(i.model.name() + ": drive brain " + d.brain + " is not a mob; picking one by size");
+        }
+        double w = i.model.radius() * 2 * i.scale(), h = i.model.height() * i.scale();
+        return w <= 0.9 && h <= 1.0 ? EntityType.WOLF : EntityType.HORSE;
     }
 
     Collection<Instance> all() {
@@ -303,7 +379,13 @@ public final class Engine implements Listener {
 
     private void forget(Instance i) {
         instances.remove(i.display.getUniqueId());
-        if (i.mover != null) movers.remove(i.mover);
+        if (i.mover != null) {
+            movers.remove(i.mover);
+            i.mover.removeBrain();
+            i.mover = null;
+        }
+        parts.values().removeIf(x -> x == i);
+        solid(i, new long[0]);
     }
 
     private void tick() {
@@ -312,6 +394,7 @@ public final class Engine implements Listener {
             if (!s.valid()) {
                 movers.remove(s);
                 if (s.brain().isValid()) s.brain().remove();
+                if (s.body() instanceof Instance b && b.mover == s) b.mover = null;
                 continue;
             }
             s.tick();
@@ -319,6 +402,8 @@ public final class Engine implements Listener {
         for (Instance i : new ArrayList<>(instances.values())) {
             if (!i.valid()) {
                 forget(i);
+                i.removeParts();
+                if (i.display.isDead()) i.clearSolid();
                 continue;
             }
             i.tick(i.display.getWorld().getGameTime());
@@ -335,8 +420,10 @@ public final class Engine implements Listener {
             LoadedModel m = models.get(name);
             if (m == null) continue;
             String state = d.getPersistentDataContainer().get(Instance.STATE, PersistentDataType.STRING);
-            Instance i = new Instance(m, d, state, d.getWorld().getGameTime());
+            Instance i = new Instance(this, m, d, state, d.getWorld().getGameTime());
             instances.put(d.getUniqueId(), i);
+            solid(i, i.solidBlocks());
+            i.build();
         }
     }
 
@@ -349,7 +436,10 @@ public final class Engine implements Listener {
     public void onEntitiesUnload(EntitiesUnloadEvent e) {
         for (Entity x : e.getEntities()) {
             Instance i = instances.get(x.getUniqueId());
-            if (i != null && x.isPersistent()) forget(i);
+            if (i != null && x.isPersistent()) {
+                forget(i);
+                i.removeParts();
+            }
         }
     }
 

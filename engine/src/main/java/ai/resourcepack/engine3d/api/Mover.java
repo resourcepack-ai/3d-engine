@@ -64,6 +64,9 @@ public interface Mover {
 
     void teleport(Location at);
 
+    /** Whether someone in its driving seat is steering it now (it ignores follow and go-to meanwhile). */
+    boolean driven();
+
     boolean valid();
 
     /** Removes the brain and the model. */

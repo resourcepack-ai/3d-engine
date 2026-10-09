@@ -30,6 +30,7 @@ subprojects {
         useJUnitPlatform()
         maxHeapSize = '2g'
         systemProperty 'slim', System.getProperty('slim', 'false')
+        systemProperty 'sample', System.getProperty('sample', '')
         testLogging { showStandardStreams = true }
     }
 

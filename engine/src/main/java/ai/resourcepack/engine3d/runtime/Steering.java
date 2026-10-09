@@ -64,6 +64,11 @@ final class Steering implements Mover {
     private double steerSpeed;
     private boolean removed;
 
+    // Driven: whoever sits in the driving seat, and how it handles.
+    private org.bukkit.entity.Player driver;
+    private ai.resourcepack.engine3d.bake.Spec.Drive drive;
+    private double driveSpeed;
+
     Steering(Instance body, Mob brain) {
         this.body = body;
         this.brain = brain;
@@ -197,6 +202,11 @@ final class Steering implements Mover {
     }
 
     @Override
+    public boolean driven() {
+        return driver != null && driver.isValid();
+    }
+
+    @Override
     public boolean valid() {
         return !removed && brain.isValid() && body.valid();
     }
@@ -204,6 +214,16 @@ final class Steering implements Mover {
     @Override
     public void remove() {
         body.remove();
+    }
+
+    /** Gives the controls to {@code driver} (null takes them back). */
+    void drive(org.bukkit.entity.Player driver, ai.resourcepack.engine3d.bake.Spec.Drive drive) {
+        if (driver == null && this.driver != null) {
+            driveSpeed = 0;
+            brain.setVelocity(new Vector(0, brain.getVelocity().getY(), 0));
+        }
+        this.driver = driver;
+        this.drive = drive;
     }
 
     void removeBrain() {
@@ -219,6 +239,13 @@ final class Steering implements Mover {
         double moved = now.getWorld() == last.getWorld() ? Math.hypot(now.getX() - last.getX(), now.getZ() - last.getZ()) : 0;
         last = now.clone();
         speed = speed * 0.6 + Math.min(moved, 1) * 0.4;
+
+        if (driver != null && driver.isValid()) {
+            steerByRider();
+            body.state(hold != null ? hold : locomotion());
+            body.teleport(withYaw(brain.getLocation()));
+            return;
+        }
 
         // Left far behind: catch up.
         if (follow != null && follow.isValid() && leash > 0 && goTo == null && !frozen) {
@@ -249,6 +276,35 @@ final class Steering implements Mover {
 
         body.state(hold != null ? hold : locomotion());
         body.teleport(withYaw(now));
+    }
+
+    /**
+     * As a horse is ridden: it turns towards where the rider looks while they
+     * hold forward (or back), sprints when they sprint and jumps when they jump.
+     */
+    private void steerByRider() {
+        org.bukkit.Input in = driver.getCurrentInput();
+        double want = in.isForward() ? (in.isSprint() || driver.isSprinting() ? drive.sprint : drive.speed) : in.isBackward() ? -drive.back : 0;
+        float off = wrap(driver.getLocation().getYaw() - yaw);
+        float cap = (float) drive.turn;
+        if (want != 0 || Math.abs(driveSpeed) > 0.02) yaw = wrap(yaw + Math.max(-cap, Math.min(cap, off)));
+        if (want != 0 && Math.abs(off) > TURNING_ABOVE) turning = 8;
+        else if (turning > 0) turning--;
+        double v = driveSpeed;
+        v = want > v ? Math.min(want, v + 0.025) : Math.max(want, v - 0.04);
+        driveSpeed = v;
+        double r = Math.toRadians(yaw);
+        double fx = -Math.sin(r), fz = Math.cos(r);
+        double vy = brain.getVelocity().getY();
+        if (brain.isOnGround()) {
+            double dir = v >= 0 ? 0.6 + Math.abs(v) * 2 : -0.6 - Math.abs(v) * 2;
+            Block ahead = brain.getLocation().add(fx * dir, 0, fz * dir).getBlock();
+            if (Math.abs(v) > 0.02 && !clear(ahead) && height(ahead) <= 1.0 && clear(ahead.getRelative(0, 1, 0)) && clear(ahead.getRelative(0, 2, 0))) vy = 0.42;
+            if (in.isJump() && drive.jump > 0) vy = drive.jump;
+        }
+        brain.setVelocity(new Vector(fx * v, vy, fz * v));
+        brain.setRotation(yaw, 0);
+        brain.setBodyYaw(yaw);
     }
 
     private Location withYaw(Location at) {

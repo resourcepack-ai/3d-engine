@@ -21,3 +21,8 @@ pack:
   # The pack format: [major, minor]. The shaders target Minecraft 26.3.
   format: [97, 1]
   description: "3D Engine models"
+
+seats:
+  # Raise (or, negative, lower) everyone sitting in a model's seats by this many
+  # blocks, if riders sit a little high or low on your server.
+  height-offset: 0.0

@@ -111,7 +111,7 @@ final class Registry {
                     Files.writeString(mf, manifest.toJson());
                     log.info(String.format("Baked %s in %.1fs", name, (System.nanoTime() - t0) / 1e9));
                 }
-                models.put(name, new LoadedModel(manifest, spec.raw));
+                models.put(name, new LoadedModel(manifest, spec));
                 entries.add(new PackBuilder.Entry(name, dir, manifest));
             } catch (Exception e) {
                 errors.add(name + ": " + e.getMessage());

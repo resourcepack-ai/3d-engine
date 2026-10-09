@@ -44,6 +44,10 @@ final class Animator {
     private long transitionStart;
     private String shownModel;
     private int shownColour = -1;
+    /** The head's own display, when the head turns on its own; null otherwise. */
+    ItemDisplay head;
+    /** Told (from, to) as each new loop starts. */
+    java.util.function.BiConsumer<String, String> changed;
 
     Animator(LoadedModel model, ItemDisplay display, String initial, long now) {
         this.model = model;
@@ -138,11 +142,13 @@ final class Animator {
     }
 
     private void startLoop(String name, long now) {
+        String was = state;
         state = name;
         loopStart = now;
         toward = null;
         Manifest.State s = manifest.states.get(name);
         show(s.model, loopColour(now, 0, s.ticks));
+        if (was != null && !was.equals(name) && changed != null) changed.accept(was, name);
     }
 
     private static int loopColour(long now, long phase, int ticks) {
@@ -162,6 +168,8 @@ final class Animator {
         shownModel = id;
         shownColour = colour;
         display.setItemStack(item(model.name(), id, colour));
+        String h = model.head(id);
+        if (head != null && h != null) head.setItemStack(item(model.name(), h, colour));
     }
 
     /** An item showing game model {@code id} of {@code model} with the clock at {@code colour}. */
