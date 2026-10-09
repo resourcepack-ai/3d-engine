@@ -43,8 +43,23 @@ final class Registry {
     record Loaded(Map<String, LoadedModel> models, List<PackBuilder.Entry> entries, List<String> errors) {
     }
 
+    /**
+     * How much detail models keep: the server's default for a model whose .yml
+     * doesn't say, the most any may keep, and per-model overrides set with
+     * {@code /3d quality}, which win over the .yml.
+     */
+    record Quality(int triangles, int maxTriangles, int textureWidth, int maxTextureWidth, Map<String, int[]> models) {
+        void apply(String name, Spec spec) {
+            int[] o = models.get(name);
+            int t = o != null && o[0] > 0 ? o[0] : spec.trianglesSet ? spec.triangles : triangles;
+            int w = o != null && o[1] > 0 ? o[1] : spec.textureWidthSet ? spec.textureWidth : textureWidth;
+            spec.triangles = Math.max(100, Math.min(maxTriangles, t));
+            spec.textureWidth = Math.max(16, Math.min(maxTextureWidth, w));
+        }
+    }
+
     /** Bakes (or loads from cache) every model. Runs off the main thread. */
-    Loaded load() throws IOException {
+    Loaded load(Quality quality) throws IOException {
         Files.createDirectories(folder);
         unzipDownloads();
         List<Path> files;
@@ -81,8 +96,9 @@ final class Registry {
                 continue;
             }
             Spec spec = specs.get(f);
+            quality.apply(name, spec);
             try {
-                String hash = hash(f, specText.get(f), spec);
+                String hash = hash(f, specText.get(f) + "\n#quality " + spec.triangles + " " + spec.textureWidth, spec);
                 Path dir = cache.resolve(name);
                 Path mf = dir.resolve("manifest.json");
                 Manifest manifest = null;

@@ -29,10 +29,16 @@ class LabradorBakeTest {
         Path dir = Path.of("../pets/src/main/resources/models");
         Assumptions.assumeTrue(Files.exists(dir.resolve("labrador.glb")), "no labrador");
         Spec spec = Spec.parse(Files.readString(Path.of("../pets/src/main/resources/models/labrador.yml")));
+        if (Integer.getInteger("labradorTriangles", 0) > 0) {
+            spec.triangles = Integer.getInteger("labradorTriangles");
+            spec.textureWidth = Integer.getInteger("labradorTexture", spec.textureWidth);
+        }
 
         long t0 = System.nanoTime();
         Baker.Baked baked = Baker.bake(dir.resolve("labrador.glb"), spec, "labrador", System.out::println);
-        System.out.printf("baked in %.1fs%n", (System.nanoTime() - t0) / 1e9);
+        long bytes = 0;
+        for (ObjCubed.Result r : baked.models().values()) bytes += r.png().length;
+        System.out.printf("baked in %.1fs: %d triangles, %.1f MB of textures%n", (System.nanoTime() - t0) / 1e9, spec.triangles, bytes / 1048576.0);
 
         Manifest m = baked.manifest();
         assertEquals(7, m.states.size());

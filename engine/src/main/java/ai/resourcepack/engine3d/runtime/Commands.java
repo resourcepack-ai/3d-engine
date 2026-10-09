@@ -36,7 +36,7 @@ import java.util.Locale;
 final class Commands implements CommandExecutor, TabCompleter, Listener {
 
     private static final NamespacedKey PLACES = new NamespacedKey("3dengine", "places");
-    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "sit", "info", "effect", "reload", "pack");
+    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "sit", "info", "quality", "effect", "reload", "pack");
 
     private final Engine engine;
     private final JavaPlugin plugin;
@@ -95,6 +95,32 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
             case "reload" -> {
                 say(sender, "Baking models...");
                 engine.reload(sender);
+            }
+            case "quality" -> {
+                Registry.Quality q = engine.quality();
+                if (args.length < 2) {
+                    say(sender, String.format("Default %d triangles and %dpx textures, at most %d and %dpx.", q.triangles(), q.textureWidth(), q.maxTriangles(), q.maxTextureWidth()));
+                    for (var e : q.models().entrySet())
+                        say(sender, String.format("  %s: %s triangles, %s texture", e.getKey(), e.getValue()[0] > 0 ? e.getValue()[0] : "default",
+                                e.getValue()[1] > 0 ? e.getValue()[1] + "px" : "default"));
+                    return usage(sender, "/3d quality <model> <triangles|reset> [texture width]");
+                }
+                LoadedModel m = model(sender, args[1]);
+                if (m == null) return true;
+                if (args.length < 3) {
+                    say(sender, String.format("%s: %d triangles, %dpx texture, %.1f megatexels in the pack.", m.name(), m.spec.triangles, m.spec.textureWidth, m.manifest.texels / 1e6));
+                    return usage(sender, "/3d quality " + m.name() + " <triangles|reset> [texture width]");
+                }
+                if (args[2].equalsIgnoreCase("reset")) {
+                    say(sender, m.name() + " goes back to its own settings. Baking...");
+                    engine.setQuality(m.name(), 0, 0, sender);
+                    return true;
+                }
+                int t = (int) parse(args[2], 0), w = args.length > 3 ? (int) parse(args[3], 0) : 0;
+                if (t <= 0) return usage(sender, "/3d quality <model> <triangles|reset> [texture width]");
+                if (t > q.maxTriangles()) say(sender, "That is over this server's limit (quality.max-triangles), so it gets " + q.maxTriangles() + ".");
+                say(sender, "Baking " + m.name() + " at " + Math.min(t, q.maxTriangles()) + " triangles" + (w > 0 ? " and " + w + "px" : "") + "...");
+                engine.setQuality(m.name(), t, w, sender);
             }
             case "pack" -> {
                 if (sender instanceof Player p) {
@@ -180,7 +206,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                         Instance.boxesOf(m).size(), Instance.boxesOf(m).size() == 1 ? "" : "es", m.spec.solid ? ", solid" : ""));
             }
             default -> {
-                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | sit [seat] | info [model] | effect <name> [size] | reload | pack");
+                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | sit [seat] | info [model] | quality [model] [triangles] | effect <name> [size] | reload | pack");
                 say(sender, "Look at a placed model to remove, scale, rotate or animate it.");
             }
         }
@@ -284,7 +310,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
         List<String> out = new ArrayList<>();
         if (args.length == 1) {
             for (String s : SUBS) if (s.startsWith(args[0].toLowerCase(Locale.ROOT))) out.add(s);
-        } else if (args.length == 2 && (args[0].equalsIgnoreCase("place") || args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("info"))) {
+        } else if (args.length == 2 && (args[0].equalsIgnoreCase("place") || args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("info") || args[0].equalsIgnoreCase("quality"))) {
             for (String m : engine.loadedModels().keySet()) if (m.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(m);
         } else if (args.length == 2 && args[0].equalsIgnoreCase("effect")) {
             for (String m : engine.effectNames()) if (m.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(m);

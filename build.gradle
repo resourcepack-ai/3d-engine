@@ -31,6 +31,10 @@ subprojects {
         maxHeapSize = '2g'
         systemProperty 'slim', System.getProperty('slim', 'false')
         systemProperty 'sample', System.getProperty('sample', '')
+        systemProperty 'slimTriangles', System.getProperty('slimTriangles', '9000')
+        systemProperty 'slimTexture', System.getProperty('slimTexture', '512')
+        systemProperty 'labradorTriangles', System.getProperty('labradorTriangles', '0')
+        systemProperty 'labradorTexture', System.getProperty('labradorTexture', '0')
         testLogging { showStandardStreams = true }
     }
 

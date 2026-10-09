@@ -40,6 +40,7 @@ All need `3dengine.admin` (op by default). Look at a placed model to act on it.
 | `/3d remove` / `scale <n>` / `rotate <deg>` / `state <state>` | Changes the model you look at |
 | `/3d sit [seat]` | Sits you in the model you look at |
 | `/3d info [model]` | Size, states, points, seats, hitboxes, and what it costs the client |
+| `/3d quality [model] [triangles\|reset] [texture width]` | How much detail a model keeps: shows the settings, or sets one model's and re-bakes |
 | `/3d effect <name> [size]` | Puts down a shader effect from `effects/` |
 | `/3d reload` | Re-bakes the folder and re-sends the pack |
 | `/3d pack` | Re-sends you the pack |
@@ -103,6 +104,15 @@ hitboxes:              # boxes of your own instead of the fitted ones
   - {at: [0, 0, 0.6], width: 1, height: 1.2}
 solid: true            # placed models fill their boxes with barriers
 ```
+
+**Detail.** `triangles` and `texture-width` default to the server's
+`quality.triangles` and `quality.texture-width` in `config.yml` (20,000 and
+512), and nothing keeps more than `quality.max-triangles` and
+`quality.max-texture-width`. `/3d quality <model> <triangles> [width]` sets one
+model's in game, over what its `.yml` says, and is kept in `config.yml`, so a
+plugin that re-copies its model files cannot undo it. An animated model stores
+its whole mesh once per frame and its texture once per animation, so the
+texture is usually what makes a pack big.
 
 Also: `animations-from` (drive this model with another file's clips, matched by
 bone name), `retarget`, `rebind`, `legs` (IK chains that keep feet planted),

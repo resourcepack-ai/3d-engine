@@ -240,16 +240,33 @@ public final class ObjCubed {
         put.at(5, 0, (vpH / 256) % 256, vpH % 256, (vtH / 256) % 256, 255);
         put.at(6, 0, (autorotate << 5) | (visibility << 2) | (cb / 256), cb % 256, 2, 255);
         put.at(7, 0, frameH % 256, nvertices % 256, vtH % 256, 255);
-        // GUI transform at q16: the icon's scale, no translation, rotation or pivot.
-        int[] s1 = q16(iconScale, 0, 4), t0 = q16(0, -128, 128), r0 = q16(0, 0, 360);
+        // GUI transform at q16: the icon's scale, about the middle of the model's
+        // box, which is then moved to the middle of the slot. Scaled about the
+        // origin instead (its feet), a small model blown up to fill the slot was
+        // pushed up and out of it.
+        double[] lo = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE}, hi = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+        for (int[] face : faces)
+            for (int v : face)
+                for (int a = 0; a < 3; a++) {
+                    double w = frames.get(0)[v][a] - (a == 1 ? 0.5 : 0);
+                    lo[a] = Math.min(lo[a], w);
+                    hi[a] = Math.max(hi[a], w);
+                }
+        int[] s1 = q16(iconScale, 0, 4), r0 = q16(0, 0, 360);
+        int[][] pivot = new int[3][], shift = new int[3][];
+        for (int a = 0; a < 3; a++) {
+            double c = (lo[a] + hi[a]) / 2;
+            pivot[a] = q16(c, -128, 128);
+            shift[a] = q16(-c * 16, -128, 128);
+        }
         put.at(8, 0, s1[0], s1[1], s1[0], 255);
         put.at(9, 0, s1[1], s1[0], s1[1], 255);
-        put.at(10, 0, t0[0], t0[1], t0[0], 255);
-        put.at(11, 0, t0[1], t0[0], t0[1], 255);
+        put.at(10, 0, shift[0][0], shift[0][1], shift[1][0], 255);
+        put.at(11, 0, shift[1][1], shift[2][0], shift[2][1], 255);
         put.at(12, 0, r0[0], r0[1], r0[0], 255);
         put.at(13, 0, r0[1], r0[0], r0[1], 255);
-        put.at(14, 0, t0[0], t0[1], t0[0], 255);
-        put.at(15, 0, t0[1], t0[0], t0[1], 255);
+        put.at(14, 0, pivot[0][0], pivot[0][1], pivot[1][0], 255);
+        put.at(15, 0, pivot[1][1], pivot[2][0], pivot[2][1], 255);
 
         // Row 1: the display-slot table obj³ writes when nothing is customised
         // (both first-person hands, and the lift for ground and shelf).

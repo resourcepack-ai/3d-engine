@@ -22,6 +22,19 @@ pack:
   format: [97, 1]
   description: "3D Engine models"
 
+quality:
+  # How many triangles a model is cut to, and how wide its texture is, when its
+  # .yml doesn't say. More is sharper, and makes the pack bigger and the game
+  # heavier for players: an animated model stores its whole mesh once per frame.
+  triangles: 20000
+  texture-width: 512
+  # The most any model may keep, whatever its .yml or /3d quality says.
+  max-triangles: 200000
+  max-texture-width: 2048
+  # Per model, set in game with /3d quality <model> <triangles> [texture width].
+  # These win over the model's own .yml.
+  models: {}
+
 seats:
   # Raise (or, negative, lower) everyone sitting in a model's seats by this many
   # blocks, if riders sit a little high or low on your server.

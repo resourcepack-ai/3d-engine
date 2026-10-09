@@ -21,8 +21,10 @@ public final class Spec {
     /** Degrees to turn the model about Y so that its front faces the entity's way (+Z in the file is "behind"). */
     public double yaw;
     public double[] offset = {0, 0, 0};
-    public int triangles = 4000;
-    public int textureWidth = 256;
+    public int triangles = 20000;
+    public int textureWidth = 512;
+    /** Whether the file said, rather than leaving it to the server's default. */
+    public boolean trianglesSet, textureWidthSet;
     /** How big the model is drawn as an inventory icon (1 = a block fills the slot); null = fitted. */
     public Double iconScale;
     /** Another file whose clips drive this one (same bone names). */
@@ -136,8 +138,14 @@ public final class Spec {
         if (m.containsKey("height")) s.height = num(m.get("height"));
         if (m.containsKey("yaw")) s.yaw = num(m.get("yaw"));
         if (m.containsKey("offset")) s.offset = vec(m.get("offset"));
-        if (m.containsKey("triangles")) s.triangles = (int) num(m.get("triangles"));
-        if (m.containsKey("texture-width")) s.textureWidth = (int) num(m.get("texture-width"));
+        if (m.containsKey("triangles")) {
+            s.triangles = (int) num(m.get("triangles"));
+            s.trianglesSet = true;
+        }
+        if (m.containsKey("texture-width")) {
+            s.textureWidth = (int) num(m.get("texture-width"));
+            s.textureWidthSet = true;
+        }
         if (m.containsKey("icon-scale")) s.iconScale = num(m.get("icon-scale"));
         if (m.containsKey("animations-from")) s.animationsFrom = String.valueOf(m.get("animations-from"));
         if (m.get("retarget") instanceof Map<?, ?> r && r.get("translate") instanceof List<?> l) s.retargetTranslate = strings(l);

@@ -134,9 +134,10 @@ public final class Engine implements Listener {
             return;
         }
         loading = true;
+        Registry.Quality quality = quality();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                Registry.Loaded loaded = registry.load();
+                Registry.Loaded loaded = registry.load(quality);
                 Effects.Linked linked = effects.link(plugin.getClass().getClassLoader());
                 FileConfiguration c = plugin.getConfig();
                 List<Integer> f = c.getIntegerList("pack.format");
@@ -188,6 +189,32 @@ public final class Engine implements Listener {
                 plugin.getLogger().log(Level.WARNING, "A ready task failed", e);
             }
         }
+    }
+
+    /** The quality settings as they are now, read on the main thread for a bake to use. */
+    Registry.Quality quality() {
+        FileConfiguration c = plugin.getConfig();
+        Map<String, int[]> models = new LinkedHashMap<>();
+        var section = c.getConfigurationSection("quality.models");
+        if (section != null)
+            for (String key : section.getKeys(false)) {
+                var m = section.getConfigurationSection(key);
+                if (m != null) models.put(key.replace(':', '.'), new int[]{m.getInt("triangles", 0), m.getInt("texture-width", 0)});
+            }
+        return new Registry.Quality(c.getInt("quality.triangles", 20000), c.getInt("quality.max-triangles", 200000),
+                c.getInt("quality.texture-width", 512), c.getInt("quality.max-texture-width", 2048), models);
+    }
+
+    /** Sets (or, with zeros, clears) a model's own override, saves it and re-bakes. */
+    void setQuality(String model, int triangles, int textureWidth, CommandSender to) {
+        String key = "quality.models." + model.replace('.', ':');
+        if (triangles <= 0 && textureWidth <= 0) plugin.getConfig().set(key, null);
+        else {
+            plugin.getConfig().set(key + ".triangles", triangles > 0 ? triangles : null);
+            plugin.getConfig().set(key + ".texture-width", textureWidth > 0 ? textureWidth : null);
+        }
+        plugin.saveConfig();
+        reload(to);
     }
 
     void send(Player p) {
