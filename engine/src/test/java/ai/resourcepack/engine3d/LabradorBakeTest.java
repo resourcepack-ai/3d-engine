@@ -58,7 +58,7 @@ class LabradorBakeTest {
         float[] pivot = m.models.get("idle").points.get(Manifest.LOOK_PIVOT).get(0);
         List<BufferedImage> looks = new ArrayList<>();
         for (double[] turn : new double[][]{{0, 0}, {50, 0}, {-50, 0}, {30, 25}})
-            looks.add(body.renderWith(head, 0, 30, pivot, turn[0], turn[1]));
+            looks.add(body.renderWith(head, 0, 60, pivot, turn[0], turn[1]));
         ImageIO.write(Preview.sheet(looks, 4), "png", out.resolve("preview-look.png").toFile());
         System.out.println("previews in " + out.toAbsolutePath());
     }

@@ -72,6 +72,11 @@ public final class Rig {
 
     private final double[][] restWorld;
 
+    /** The node slot {@code s} of a vertex's joints follows. */
+    public int slotNodeOf(int s) {
+        return slotNode[s];
+    }
+
     private Rig(int nodes) {
         names = new String[nodes];
         parent = new int[nodes];

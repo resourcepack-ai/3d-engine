@@ -29,6 +29,17 @@ class SampleBakeTest {
         Baker.Baked baked = Baker.bake(f, spec, base, System.out::println);
         Manifest m = baked.manifest();
         System.out.printf("%s: height %.2f radius %.2f bounds %s states %s%n", base, m.height, m.radius, Arrays.toString(m.bounds), m.states.keySet());
+        // Where the tallest part is: for a chair, its back. The model's front is -z.
+        String still = m.states.get(m.defaultState).model;
+        LabradorBakeTest.Decoded top = LabradorBakeTest.Decoded.read(baked.models().get(still).png());
+        double z = 0;
+        int n = 0;
+        for (double[] p : top.pos()[0])
+            if (p[1] > m.bounds[1] + (m.bounds[4] - m.bounds[1]) * 0.85) {
+                z += p[2];
+                n++;
+            }
+        System.out.printf("%s: top 15%% sits at z %.2f (front is -z)%n", base, z / Math.max(1, n));
         Path out = Path.of("build/previews");
         Files.createDirectories(out);
         String id = m.states.get(m.defaultState).model;

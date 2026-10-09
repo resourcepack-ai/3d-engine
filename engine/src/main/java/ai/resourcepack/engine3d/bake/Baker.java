@@ -40,6 +40,8 @@ public final class Baker {
     private final List<LegChain> legs = new ArrayList<>();
     private final Map<String, int[]> points = new LinkedHashMap<>();
     private final Map<String, double[]> pointLocal = new LinkedHashMap<>();
+    /** Vertices of parts the spec hides; null when it hides none. */
+    private boolean[] hidden;
 
     private record LegChain(int[] chain, int target, int last, double[] endLocal) {
     }
@@ -164,6 +166,23 @@ public final class Baker {
                 throw new IOException("state " + e.getKey() + ": no clip called " + clip + " (have " + clipNames() + ")");
         }
 
+        // Parts the spec leaves out go before anything measures the model.
+        if (!spec.hide.isEmpty()) {
+            int[] tops = new int[spec.hide.size()];
+            for (int i = 0; i < tops.length; i++) tops[i] = bone(spec.hide.get(i));
+            boolean[] gone = under(tops);
+            rig.tris.removeIf(t -> {
+                for (int k = 0; k < 3; k++) if (!gone[owner(t[k])]) return false;
+                return true;
+            });
+            if (rig.tris.isEmpty()) throw new IOException("hide: that leaves nothing");
+            Set<Integer> used = new LinkedHashSet<>();
+            for (int[] t : rig.tris) for (int k = 0; k < 3; k++) used.add(t[k]);
+            hidden = new boolean[restAll.length];
+            java.util.Arrays.fill(hidden, true);
+            for (int v : used) hidden[v] = false;
+        }
+
         // Decimate at rest; the survivors keep their own UVs and weights.
         int before = rig.tris.size();
         List<int[]> tris = Simplifier.simplify(restAll, rig.tris, spec.triangles);
@@ -236,7 +255,7 @@ public final class Baker {
             if (spec.item != null) log.accept(name + ": look is ignored on a held item");
             else {
                 int head = bone(spec.look.bone);
-                double[] share = headShare(head, keep);
+                double[] share = headShare(headNodes(head, restAll, name), keep);
                 List<int[]> body = new ArrayList<>(), top = new ArrayList<>();
                 for (int[] f : faces) {
                     double w = 0;
@@ -354,15 +373,76 @@ public final class Baker {
         models.put(id, r);
     }
 
-    /** Per kept vertex, how much of it hangs off {@code head} or anything below it. */
-    private double[] headShare(int head, int[] keep) {
+    /** The node vertex {@code v} mostly follows. */
+    private int owner(int v) {
+        Rig.Vert x = rig.verts.get(v);
+        int best = 0;
+        for (int k = 1; k < x.weights.length; k++) if (x.weights[k] > x.weights[best]) best = k;
+        return rig.slotNode[x.joints[best]];
+    }
+
+    /** Nodes at or below any of {@code tops}. */
+    private boolean[] under(int... tops) {
         boolean[] under = new boolean[rig.parent.length];
         for (int n = 0; n < under.length; n++)
-            for (int a = n; a >= 0; a = rig.parent[a])
-                if (a == head) {
-                    under[n] = true;
-                    break;
+            for (int a = n; a >= 0 && !under[n]; a = rig.parent[a])
+                for (int t : tops) if (a == t) under[n] = true;
+        return under;
+    }
+
+    /**
+     * The head bone and everything below it, plus the bones beside it that are
+     * really part of the head. Rigs often hang the jaw, the tongue and the ears
+     * off the neck next to the head rather than under it, and left behind they
+     * stay put while the head turns away from them. A bone beside the head
+     * joins it when most of the vertices it carries lie within the head's own
+     * box (grown by a third); so ears and jaws do, and the shoulders beside a
+     * neck don't. {@code look.with} names any the rule misses.
+     */
+    private boolean[] headNodes(int head, double[][] restAll, String name) throws IOException {
+        boolean[] set = under(head);
+        int[] owner = new int[rig.verts.size()];
+        for (int v = 0; v < owner.length; v++) owner[v] = hidden != null && hidden[v] ? -1 : owner(v);
+        double[] lo = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE}, hi = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+        for (int v = 0; v < owner.length; v++)
+            if (owner[v] >= 0 && set[owner[v]]) for (int k = 0; k < 3; k++) {
+                lo[k] = Math.min(lo[k], restAll[v][k]);
+                hi[k] = Math.max(hi[k], restAll[v][k]);
+            }
+        List<String> joined = new ArrayList<>();
+        if (lo[0] <= hi[0]) {
+            for (int k = 0; k < 3; k++) {
+                double grow = (hi[k] - lo[k]) / 3;
+                lo[k] -= grow;
+                hi[k] += grow;
+            }
+            int parent = rig.parent[head];
+            for (int s = 0; s < rig.parent.length && parent >= 0; s++) {
+                if (s == head || rig.parent[s] != parent) continue;
+                boolean[] branch = under(s);
+                int all = 0, inside = 0;
+                for (int v = 0; v < owner.length; v++) {
+                    if (owner[v] < 0 || !branch[owner[v]]) continue;
+                    all++;
+                    double[] p = restAll[v];
+                    if (p[0] >= lo[0] && p[0] <= hi[0] && p[1] >= lo[1] && p[1] <= hi[1] && p[2] >= lo[2] && p[2] <= hi[2]) inside++;
                 }
+                if (all > 0 && inside >= all * 0.6) {
+                    for (int n = 0; n < set.length; n++) set[n] |= branch[n];
+                    joined.add(Rig.strip(rig.names[s]));
+                }
+            }
+        }
+        for (String extra : spec.look.with) {
+            boolean[] branch = under(bone(extra));
+            for (int n = 0; n < set.length; n++) set[n] |= branch[n];
+        }
+        if (!joined.isEmpty()) log.accept(name + ": the head also takes " + String.join(", ", joined));
+        return set;
+    }
+
+    /** Per kept vertex, how much of it hangs off the bones in {@code under}. */
+    private double[] headShare(boolean[] under, int[] keep) {
         double[] out = new double[keep.length];
         for (int i = 0; i < keep.length; i++) {
             Rig.Vert v = rig.verts.get(keep[i]);

@@ -30,6 +30,8 @@ public final class Spec {
     /** Bones whose translations are carried over when retargeting; null = all. */
     public List<String> retargetTranslate;
     public List<String> rebind = new ArrayList<>();
+    /** Parts of the file left out (a ground plane, a backdrop, a camera rig): nodes or bones, with everything under them. */
+    public List<String> hide = new ArrayList<>();
     public List<Leg> legs = new ArrayList<>();
     public Map<String, Point> points = new LinkedHashMap<>();
     public Map<String, State> states = new LinkedHashMap<>();
@@ -92,6 +94,8 @@ public final class Spec {
      */
     public static final class Look {
         public String bone;
+        /** More bones that turn with the head, when the rig hangs them beside it rather than under it. */
+        public List<String> with = new ArrayList<>();
         public double yaw = 70, pitch = 35, range = 8, speed = 9;
         /** States it looks in; null = all. */
         public List<String> states;
@@ -138,6 +142,8 @@ public final class Spec {
         if (m.containsKey("animations-from")) s.animationsFrom = String.valueOf(m.get("animations-from"));
         if (m.get("retarget") instanceof Map<?, ?> r && r.get("translate") instanceof List<?> l) s.retargetTranslate = strings(l);
         if (m.get("rebind") instanceof List<?> l) s.rebind = strings(l);
+        if (m.get("hide") instanceof List<?> l) s.hide = strings(l);
+        else if (m.get("hide") instanceof String one) s.hide = List.of(one);
         if (m.get("legs") instanceof List<?> l)
             for (Object o : l)
                 if (o instanceof Map<?, ?> leg) s.legs.add(new Leg(strings((List<?>) leg.get("chain")), String.valueOf(leg.get("target"))));
@@ -165,6 +171,7 @@ public final class Spec {
         if (m.get("look") instanceof Map<?, ?> lk) {
             Look l = new Look();
             if (lk.get("bone") != null) l.bone = String.valueOf(lk.get("bone"));
+            if (lk.get("with") instanceof List<?> w) l.with = strings(w);
             if (lk.containsKey("yaw")) l.yaw = num(lk.get("yaw"));
             if (lk.containsKey("pitch")) l.pitch = num(lk.get("pitch"));
             if (lk.containsKey("range")) l.range = num(lk.get("range"));

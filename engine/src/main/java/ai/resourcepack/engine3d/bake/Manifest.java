@@ -18,7 +18,7 @@ import java.util.Map;
 public final class Manifest {
 
     /** Bumped whenever the bake's output changes, so old caches are rebuilt. */
-    public static final int BAKE_VERSION = 3;
+    public static final int BAKE_VERSION = 4;
 
     public String name;
     public String hash;

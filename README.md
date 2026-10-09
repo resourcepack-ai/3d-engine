@@ -57,6 +57,7 @@ yaw: 90                # turn it so its front faces the way it is placed
 offset: [0, 0, 0]
 triangles: 4000        # simplify to about this many
 texture-width: 256
+hide: [Ground, Camera] # leave out parts of the file (a ground plane, a backdrop), by node name
 
 # Animation (glTF clips)
 default-state: idle
@@ -73,6 +74,7 @@ points:                # named places that follow a bone (a mouth, a hand)
 # Looking at players
 look:
   bone: Head           # only the head turns, on its neck; leave out to turn the whole model
+  with: [Jaw]          # more bones that turn with it (see below)
   yaw: 60              # the most it turns either way, degrees
   pitch: 30
   range: 8             # blocks
@@ -117,6 +119,9 @@ that move (driven, or walked by a plugin) are never solid.
 
 **Looking with a bone** draws the head as a second model on its own display,
 turned on its neck. It costs one more item model per animation and an icon.
+Rigs often hang the jaw, tongue or ears beside the head bone rather than under
+it; any bone beside it whose vertices sit within the head's own space turns
+with the head too (the bake log says which), and `with:` adds any it misses.
 
 ## The API
 
