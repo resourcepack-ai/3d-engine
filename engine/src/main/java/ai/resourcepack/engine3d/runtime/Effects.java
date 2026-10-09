@@ -119,10 +119,22 @@ final class Effects {
     // ---- displays ----------------------------------------------------------------
 
     EffectInstance spawn(String name, Location at, double size) {
+        return spawn(name, at, size, false, t -> {});
+    }
+
+    /**
+     * {@code viewModel}: drawn in the hand's projection (see
+     * EffectLinker#SIGNATURE_BLUE_VIEW_MODEL). {@code before} runs on the
+     * display before it enters the world, so whom it is shown to is settled
+     * before anybody is sent it.
+     */
+    EffectInstance spawn(String name, Location at, double size, boolean viewModel, java.util.function.Consumer<TextDisplay> before) {
         Integer id = index.get(name);
         if (id == null) throw new IllegalArgumentException("No effect called " + name);
+        int blue = viewModel ? EffectLinker.SIGNATURE_BLUE_VIEW_MODEL : EffectLinker.SIGNATURE_BLUE;
         TextDisplay d = at.getWorld().spawn(at, TextDisplay.class, t -> {
-            t.text(Component.text(MARKER).font(Key.key(FONT)).color(TextColor.color(EffectLinker.SIGNATURE_RED, id, EffectLinker.SIGNATURE_BLUE)));
+            before.accept(t);
+            t.text(Component.text(MARKER).font(Key.key(FONT)).color(TextColor.color(EffectLinker.SIGNATURE_RED, id, blue)));
             t.setBillboard(Display.Billboard.CENTER);
             t.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
             t.setDefaultBackground(false);

@@ -73,6 +73,20 @@ public interface Engine3D {
     /** Puts effect {@code name} in the world, centred at {@code at}, {@code size} blocks across. */
     EffectInstance effect(String name, Location at, double size);
 
+    /** {@link #effect(String, Location, double)}, seen by everybody but {@code except}. */
+    EffectInstance effect(String name, Location at, double size, org.bukkit.entity.Player except);
+
+    /**
+     * Effect {@code name} seen only by {@code viewer}, and drawn the way their
+     * held item is: Minecraft draws the hand at a field of view of 70 whatever
+     * the player has set, so anything in the world that should meet what they
+     * hold (a flame leaving a nozzle, a muzzle flash) misses it at any other
+     * setting. This one doesn't. Place it as if their field of view were 70;
+     * it is meant for first person, and pairs with an ordinary effect hidden
+     * from {@code viewer} that everybody else sees.
+     */
+    EffectInstance viewModelEffect(String name, org.bukkit.entity.Player viewer, Location at, double size);
+
     /** Launches effect {@code name} from {@code at} at {@code velocity} (blocks per tick), flown by the engine. */
     Particle particle(String name, Location at, org.bukkit.util.Vector velocity, Particle.Options options);
 

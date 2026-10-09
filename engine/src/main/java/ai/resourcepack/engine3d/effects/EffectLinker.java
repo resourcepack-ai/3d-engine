@@ -34,6 +34,14 @@ public final class EffectLinker {
 
     /** The red and blue of the mark; green is the effect's index. */
     public static final int SIGNATURE_RED = 253, SIGNATURE_BLUE = 250;
+    /**
+     * The blue of a view-model effect: drawn in the projection the held item
+     * is drawn in (Minecraft draws the hand at a field of view of 70 whatever
+     * the player's setting), so it lines up with what they hold.
+     */
+    public static final int SIGNATURE_BLUE_VIEW_MODEL = 251;
+    /** 1 / tan(35 degrees): the hand's projection's vertical scale. */
+    static final double HAND_SCALE = 1.0 / Math.tan(Math.toRadians(35));
     /** The marker glyph's texture is this many texels a side, each storing its own coordinate. */
     public static final int GLYPH_TEXELS = 16;
     /** Font pixels: a text display draws 40 to a block, so the quad is two blocks and the effect one across at scale 1. */
@@ -76,9 +84,21 @@ public final class EffectLinker {
     public static String vertex(String vanilla) {
         String decl = "layout(location = 4) out vec4 rawColor;\nlayout(location = 5) out vec3 rpwPos;\nlayout(location = 6) flat out mat4 rpwToClip;\n";
         String s = insertBefore(vanilla, "void main()", decl);
-        return s.replaceFirst("void main\\(\\) \\{\\n", Matcher.quoteReplacement(
-                "void main() {\n    // 3D Engine effects: the raw colour (the gate), and camera-relative world position.\n"
-                        + "    rawColor = Color;\n    rpwPos = Position;\n    rpwToClip = ProjMat * ModelViewMat;\n"));
+        s = s.replaceFirst("void main\\(\\)", "void rpe_vanilla_main()");
+        return s + String.format(java.util.Locale.ROOT, """
+
+                void main() {
+                    rpe_vanilla_main();
+                    // 3D Engine effects: the raw colour (the gate), and camera-relative world position.
+                    rawColor = Color;
+                    rpwPos = Position;
+                    rpwToClip = ProjMat * ModelViewMat;
+                    // A view-model effect is drawn as if the field of view were the hand's, 70,
+                    // scaled about the centre of the screen: it then sits where the held item is.
+                    if (abs(Color.r - %.6f) < 0.5 / 255.0 && abs(Color.b - %.6f) < 0.5 / 255.0)
+                        gl_Position.xy *= %.6f / ProjMat[1][1];
+                }
+                """, SIGNATURE_RED / 255.0, SIGNATURE_BLUE_VIEW_MODEL / 255.0, HAND_SCALE);
     }
 
     /** 26.3's text.fsh: vanilla's main kept under another name, the effects and a new main appended. */
@@ -171,14 +191,16 @@ public final class EffectLinker {
         return "\n// ======== 3D Engine effects ========\n"
                 + "const float RPW_GLYPH = " + GLYPH_TEXELS + ".0;\n"
                 + "const float RPW_BOUND = 0.25;\n"
-                + String.format(java.util.Locale.ROOT, "const float RPW_SIG_R = %.6f;\nconst float RPW_SIG_B = %.6f;\n", SIGNATURE_RED / 255.0, SIGNATURE_BLUE / 255.0)
+                + String.format(java.util.Locale.ROOT, "const float RPW_SIG_R = %.6f;\nconst float RPW_SIG_B = %.6f;\nconst float RPW_SIG_B_VIEW = %.6f;\n",
+                        SIGNATURE_RED / 255.0, SIGNATURE_BLUE / 255.0, SIGNATURE_BLUE_VIEW_MODEL / 255.0)
                 + LIBRARY + modules + dispatch + TRACE;
     }
 
     private static final String TRACE = """
 
             bool rpw_is_ours() {
-                return abs(rawColor.r - RPW_SIG_R) < 0.5 / 255.0 && abs(rawColor.b - RPW_SIG_B) < 0.5 / 255.0;
+                return abs(rawColor.r - RPW_SIG_R) < 0.5 / 255.0
+                        && (abs(rawColor.b - RPW_SIG_B) < 0.5 / 255.0 || abs(rawColor.b - RPW_SIG_B_VIEW) < 0.5 / 255.0);
             }
 
             // The effect in its sphere of radius R at C (camera-relative world space), for the

@@ -270,6 +270,17 @@ public final class Engine implements Listener {
         return effects.spawn(name, at, size);
     }
 
+    public ai.resourcepack.engine3d.api.EffectInstance effect(String name, Location at, double size, org.bukkit.entity.Player except) {
+        return effects.spawn(name, at, size, false, t -> except.hideEntity(plugin, t));
+    }
+
+    public ai.resourcepack.engine3d.api.EffectInstance viewModelEffect(String name, org.bukkit.entity.Player viewer, Location at, double size) {
+        return effects.spawn(name, at, size, true, t -> {
+            t.setVisibleByDefault(false);
+            viewer.showEntity(plugin, t);
+        });
+    }
+
     public ai.resourcepack.engine3d.api.Particle particle(String name, Location at, org.bukkit.util.Vector velocity,
                                                           ai.resourcepack.engine3d.api.Particle.Options options) {
         return effects.particle(name, at, velocity, options == null ? new ai.resourcepack.engine3d.api.Particle.Options() : options);
