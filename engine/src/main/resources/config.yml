@@ -26,3 +26,8 @@ seats:
   # Raise (or, negative, lower) everyone sitting in a model's seats by this many
   # blocks, if riders sit a little high or low on your server.
   height-offset: 0.0
+
+# Anonymous usage count, and the only telemetry 3D Engine has: every 30
+# seconds it sends a random id, how many players are online and the names of
+# plugins that depend on it. Nothing else.
+telemetry: true
