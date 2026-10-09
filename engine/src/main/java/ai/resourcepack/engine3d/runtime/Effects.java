@@ -44,6 +44,16 @@ final class Effects {
     private final Logger log;
     private Map<String, Integer> index = Map.of();
     private final List<ParticleImpl> particles = new ArrayList<>();
+    /**
+     * Displays of particles that have died, kept invisible (scale 0) to be
+     * reused: a new entity takes a tick or two to reach the client, so a
+     * spawned particle is never seen where it was born, while a reused one
+     * jumps there and is drawn the same tick. A flamethrower's fire would
+     * otherwise start a block or two from the nozzle.
+     */
+    private final Map<String, java.util.ArrayDeque<EffectImpl>> idle = new java.util.HashMap<>();
+    private final Map<EffectImpl, Long> idleSince = new java.util.HashMap<>();
+    private long ticks;
 
     Effects(Path folder, Logger log) {
         this.folder = folder;
@@ -175,7 +185,7 @@ final class Effects {
 
         @Override
         public void size(double blocks, int ticks) {
-            if (Math.abs(blocks - size) < 1e-4) return;
+            if (Math.abs(blocks - size) < 1e-4 && ticks != 0) return;
             size = blocks;
             display.setInterpolationDelay(0);
             display.setInterpolationDuration(Math.max(0, ticks));
@@ -207,26 +217,75 @@ final class Effects {
         Location start = at.clone();
         start.setYaw(0);
         start.setPitch(0);
-        EffectImpl e = (EffectImpl) spawn(name, start, o.startSize);
+        EffectImpl e = reuse(name, start);
+        if (e != null) {
+            e.teleport(start, 0);
+            e.size(o.startSize, 0);
+        } else {
+            e = (EffectImpl) spawn(name, start, o.startSize);
+        }
         e.param(o.startParam);
         ParticleImpl p = new ParticleImpl(e, start, velocity.clone(), o);
         particles.add(p);
         return p;
     }
 
+    private EffectImpl reuse(String name, Location at) {
+        java.util.ArrayDeque<EffectImpl> pool = idle.get(name);
+        if (pool == null) return null;
+        for (Iterator<EffectImpl> it = pool.iterator(); it.hasNext(); ) {
+            EffectImpl e = it.next();
+            if (!e.valid()) {
+                it.remove();
+                idleSince.remove(e);
+                continue;
+            }
+            Location l = e.location();
+            if (l.getWorld() != at.getWorld() || l.distanceSquared(at) > 48 * 48) continue;
+            it.remove();
+            idleSince.remove(e);
+            return e;
+        }
+        return null;
+    }
+
+    private void retire(EffectImpl e) {
+        if (!e.valid()) return;
+        e.size(0, 0);
+        idle.computeIfAbsent(e.effect(), k -> new java.util.ArrayDeque<>()).add(e);
+        idleSince.put(e, ticks);
+    }
+
     void tick() {
+        ticks++;
         for (Iterator<ParticleImpl> it = particles.iterator(); it.hasNext(); ) {
             ParticleImpl p = it.next();
             if (!p.step()) {
                 it.remove();
-                p.effect.remove();
+                retire(p.effect);
             }
+        }
+        // Idle displays nobody has reused for ten seconds go.
+        if (ticks % 40 == 0) {
+            for (var pool : idle.values())
+                pool.removeIf(e -> {
+                    Long since = idleSince.get(e);
+                    if (since != null && ticks - since > 200) {
+                        idleSince.remove(e);
+                        e.remove();
+                        return true;
+                    }
+                    return false;
+                });
         }
     }
 
     void clear() {
         for (ParticleImpl p : particles) p.effect.remove();
         particles.clear();
+        for (var pool : idle.values()) pool.forEach(EffectImpl::remove);
+        idle.clear();
+        idleSince.clear();
     }
 
     static final class ParticleImpl implements Particle {

@@ -26,8 +26,9 @@ import java.util.regex.Pattern;
  * and the order-independent transparency passes, which the effect's colour goes
  * through like any other text's). An effect may also read two things Studio's
  * do not have: {@code rpw_param}, a number 0..1 set per display through its
- * text opacity (a flame's age), and {@code rpw_world}, the effect's centre in
- * world blocks, to vary itself from one copy to the next.
+ * text opacity (a flame's age), and {@code rpw_world} and {@code rpw_radius},
+ * the effect's centre in world blocks and its radius in blocks, so that copies
+ * can sample one field fixed in the world and blend into one body.
  */
 public final class EffectLinker {
 
@@ -154,6 +155,7 @@ public final class EffectLinker {
             // Set per display before the effect runs: its parameter, and its centre in world blocks.
             float rpw_param = 1.0;
             vec3 rpw_world = vec3(0.0);
+            float rpw_radius = 1.0;
             """;
 
     private static String core(List<Effect> effects) {
@@ -193,6 +195,7 @@ public final class EffectLinker {
                 float t1 = -b + h;
                 if (t1 <= 0.0) return vec4(0.0);
                 rpw_world = C + vec3(CameraBlockPos) - CameraOffset;
+                rpw_radius = R;
                 float depth = t0;
                 vec4 color = rpw_dispatch(id, ro, rd, t0, t1, GameTime * 1200.0, light, depth);
                 if (color.a < 0.004) return vec4(0.0);
