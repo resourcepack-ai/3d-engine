@@ -2,7 +2,7 @@ plugins {
     id 'com.gradleup.shadow' version '8.3.5'
 }
 
-version = '0.1.0'
+version = '0.1.1'
 base { archivesName = '3DEngine' }
 
 repositories {
@@ -21,7 +21,17 @@ repositories {
     }
 }
 
+// Paper's half of the Platform layer, compiled against Paper's API and loaded
+// only on a Paper server; everything else compiles against Spigot's.
+sourceSets {
+    paper {
+        java { srcDir 'src/paper/java' }
+        compileClasspath += sourceSets.main.output
+    }
+}
+
 dependencies {
+    paperCompileOnly 'io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT'
     // The small library our plugins shade in (the usage heartbeat), relocated
     // below so it never meets another plugin's copy.
     implementation 'ai.resourcepack:common:0.2.0'
@@ -31,6 +41,7 @@ dependencies {
 // never share a name, and is what the addons compile against.
 shadowJar {
     archiveClassifier.set('')
+    from sourceSets.paper.output
     relocate 'ai.resourcepack.common', 'ai.resourcepack.engine3d.libs.common'
 }
 

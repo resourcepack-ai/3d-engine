@@ -105,7 +105,7 @@ public final class Engine implements Listener {
             cmd.setTabCompleter(commands);
         }
         Bukkit.getPluginManager().registerEvents(commands, plugin);
-        Bukkit.getPluginManager().registerEvents(new Interactions(this), plugin);
+        Bukkit.getPluginManager().registerEvents(new Interactions(this, plugin), plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
         // On the first tick, so a plugin depending on this one has had its
         // onEnable to copy its own models in.
@@ -359,7 +359,7 @@ public final class Engine implements Listener {
     /** The solid model a block is part of, or null. */
     Instance solidOwner(org.bukkit.block.Block b) {
         Map<Long, Instance> world = solidBlocks.get(b.getWorld().getUID());
-        Instance i = world == null ? null : world.get(b.getBlockKey());
+        Instance i = world == null ? null : world.get(Blocks.key(b));
         return i == null || i.removed() ? null : i;
     }
 

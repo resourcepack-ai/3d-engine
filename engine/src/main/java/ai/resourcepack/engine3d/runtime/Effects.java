@@ -4,9 +4,6 @@ import ai.resourcepack.engine3d.api.EffectInstance;
 import ai.resourcepack.engine3d.api.Particle;
 import ai.resourcepack.engine3d.bake.ObjCubed;
 import ai.resourcepack.engine3d.effects.EffectLinker;
-import net.kyori.adventure.key.Key;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -132,9 +129,9 @@ final class Effects {
         Integer id = index.get(name);
         if (id == null) throw new IllegalArgumentException("No effect called " + name);
         int blue = viewModel ? EffectLinker.SIGNATURE_BLUE_VIEW_MODEL : EffectLinker.SIGNATURE_BLUE;
-        TextDisplay d = at.getWorld().spawn(at, TextDisplay.class, t -> {
+        int rgb = (EffectLinker.SIGNATURE_RED << 16) | (id << 8) | blue;
+        TextDisplay d = Platform.CURRENT.spawnText(at, MARKER, FONT, rgb, t -> {
             before.accept(t);
-            t.text(Component.text(MARKER).font(Key.key(FONT)).color(TextColor.color(EffectLinker.SIGNATURE_RED, id, blue)));
             t.setBillboard(Display.Billboard.CENTER);
             t.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
             t.setDefaultBackground(false);

@@ -1,9 +1,7 @@
 package ai.resourcepack.engine3d.runtime;
 
 import ai.resourcepack.engine3d.api.ModelInstance;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
@@ -49,7 +47,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
     }
 
     private static void say(CommandSender to, String text) {
-        to.sendMessage(Component.text("3D ", NamedTextColor.AQUA).append(Component.text(text, NamedTextColor.GRAY)));
+        to.sendMessage(ChatColor.AQUA + "3D " + ChatColor.GRAY + text);
     }
 
     @Override
@@ -242,7 +240,8 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
     private static Location placeAt(Player p) {
         Block b = p.getTargetBlockExact(8);
         if (b == null) return null;
-        BlockFace face = p.getTargetBlockFace(8);
+        org.bukkit.util.RayTraceResult hit = p.rayTraceBlocks(8);
+        BlockFace face = hit == null ? null : hit.getHitBlockFace();
         Location at;
         if (face == null || face == BlockFace.UP) at = b.getLocation().add(0.5, Steering.height(b) > 0 ? Steering.height(b) : 1, 0.5);
         else at = b.getRelative(face).getLocation().add(0.5, 0, 0.5);
@@ -279,8 +278,8 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
         String still = m.manifest.icon != null ? m.manifest.icon : m.manifest.states.get(m.defaultState()).model;
         ItemStack item = Animator.item(m.name(), still, 0);
         ItemMeta meta = item.getItemMeta();
-        meta.itemName(Component.text(m.name(), NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-        meta.lore(List.of(Component.text("Right-click a block to place", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        meta.setItemName(ChatColor.AQUA + m.name());
+        meta.setLore(List.of(ChatColor.GRAY + "Right-click a block to place"));
         meta.getPersistentDataContainer().set(PLACES, PersistentDataType.STRING, m.name());
         item.setItemMeta(meta);
         return item;

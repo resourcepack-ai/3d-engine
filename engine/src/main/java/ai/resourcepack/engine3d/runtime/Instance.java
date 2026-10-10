@@ -8,7 +8,6 @@ import ai.resourcepack.engine3d.api.event.ModelRemoveEvent;
 import ai.resourcepack.engine3d.api.event.ModelStateChangeEvent;
 import ai.resourcepack.engine3d.bake.Manifest;
 import ai.resourcepack.engine3d.bake.Spec;
-import io.papermc.paper.entity.TeleportFlag;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -303,7 +302,7 @@ final class Instance implements ModelInstance {
                         Block b = w.getBlockAt(x, y, z);
                         if (!b.getType().isAir()) continue;
                         b.setType(Material.BARRIER, false);
-                        placed.add(b.getBlockKey());
+                        placed.add(Blocks.key(b));
                     }
         }
         solid = placed.stream().mapToLong(Long::longValue).toArray();
@@ -315,7 +314,7 @@ final class Instance implements ModelInstance {
         if (solid.length == 0) return;
         World w = display.getWorld();
         for (long k : solid) {
-            Block b = w.getBlockAtKey(k);
+            Block b = Blocks.at(w, k);
             if (b.getType() == Material.BARRIER) b.setType(Material.AIR, false);
         }
         engine.solid(this, new long[0]);
@@ -625,7 +624,7 @@ final class Instance implements ModelInstance {
                 continue;
             }
             Location to = mountAt(s.seat, now + 1);
-            if (to.distanceSquared(s.mount.getLocation()) > 1e-6) s.mount.teleport(to, TeleportFlag.EntityState.RETAIN_PASSENGERS);
+            if (to.distanceSquared(s.mount.getLocation()) > 1e-6) Platform.CURRENT.moveWithRiders(s.mount, to);
         }
     }
 

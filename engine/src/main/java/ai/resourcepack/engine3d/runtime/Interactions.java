@@ -2,7 +2,6 @@ package ai.resourcepack.engine3d.runtime;
 
 import ai.resourcepack.engine3d.api.event.ModelDamageEvent;
 import ai.resourcepack.engine3d.api.event.ModelInteractEvent;
-import io.papermc.paper.event.player.PrePlayerAttackEntityEvent;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -37,8 +36,19 @@ final class Interactions implements Listener {
     /** The tick each player last clicked a model, so one click never counts twice. */
     private final Map<UUID, Long> lastClick = new HashMap<>();
 
-    Interactions(Engine engine) {
+    /** Whether a swing is heard before it lands (Paper); otherwise players are handled with the damage below. */
+    private final boolean swings;
+    /** Set while a seat's riders are lifted off and put back to move it, so that is not taken for getting out. */
+    static boolean reseating;
+
+    Interactions(Engine engine, org.bukkit.plugin.Plugin plugin) {
         this.engine = engine;
+        this.swings = Platform.CURRENT.listenForSwings(plugin, (player, attacked) -> {
+            Instance model = engine.owner(attacked);
+            if (model == null) return false;
+            hit(model, player, player, attack(player));
+            return true;
+        });
     }
 
     private void clicked(Player p, Instance model, EquipmentSlot hand) {
@@ -78,21 +88,17 @@ final class Interactions implements Listener {
         if (engine.solidOwner(e.getBlock()) != null) e.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOW)
-    public void onAttack(PrePlayerAttackEntityEvent e) {
-        Instance model = engine.owner(e.getAttacked());
-        if (model == null) return;
-        e.setCancelled(true);
-        hit(model, e.getPlayer(), e.getPlayer(), attack(e.getPlayer()));
-    }
-
-    // Players are handled as they swing (above); this is arrows and mobs.
+    // Arrows and mobs, and on Spigot players too (Paper hears a player's swing before it lands).
     @EventHandler(priority = EventPriority.LOW)
     public void onDamage(EntityDamageByEntityEvent e) {
-        if (e.getDamager() instanceof Player) return;
+        if (swings && e.getDamager() instanceof Player) return;
         Instance model = engine.owner(e.getEntity());
         if (model == null) return;
         e.setCancelled(true);
+        if (e.getDamager() instanceof Player p) {
+            hit(model, p, p, attack(p));
+            return;
+        }
         Player shooter = null;
         if (e.getDamager() instanceof Projectile pr) {
             ProjectileSource src = pr.getShooter();
@@ -104,8 +110,8 @@ final class Interactions implements Listener {
     @EventHandler(priority = EventPriority.LOW)
     public void onDismount(EntityDismountEvent e) {
         Instance model = engine.owner(e.getDismounted());
-        if (model == null) return;
-        if (model.leaving(e.getEntity(), e.isCancellable())) e.setCancelled(true);
+        if (model == null || reseating) return;
+        if (model.leaving(e.getEntity(), Platform.CURRENT.cancellable(e))) e.setCancelled(true);
     }
 
     @EventHandler

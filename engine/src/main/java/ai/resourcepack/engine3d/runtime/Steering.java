@@ -2,9 +2,6 @@ package ai.resourcepack.engine3d.runtime;
 
 import ai.resourcepack.engine3d.api.ModelInstance;
 import ai.resourcepack.engine3d.api.Mover;
-import com.destroystokyo.paper.entity.ai.Goal;
-import com.destroystokyo.paper.entity.ai.GoalKey;
-import com.destroystokyo.paper.entity.ai.GoalType;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -13,9 +10,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
 import org.bukkit.util.Vector;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 
@@ -82,7 +77,7 @@ final class Steering implements Mover {
         turnStanding = (float) num(loco, "turn-standing", 9);
         turnMoving = (float) num(loco, "turn-moving", 14);
         last = brain.getLocation();
-        yaw = brain.getBodyYaw();
+        yaw = brain.getLocation().getYaw();
         body.mover = this;
     }
 
@@ -107,8 +102,7 @@ final class Steering implements Mover {
         brain.addScoreboardTag("3dengine");
         var range = brain.getAttribute(Attribute.FOLLOW_RANGE);
         if (range != null) range.setBaseValue(48);
-        Bukkit.getMobGoals().removeAllGoals(brain);
-        Bukkit.getMobGoals().addGoal(brain, 1, steering.new Legs(new NamespacedKey(plugin, "legs")));
+        Platform.CURRENT.prepareBrain(brain, plugin, steering.new Legs());
     }
 
     // ---- the API ----------------------------------------------------------------
@@ -188,7 +182,7 @@ final class Steering implements Mover {
     public void freeze(boolean frozen) {
         this.frozen = frozen;
         if (frozen) {
-            brain.getPathfinder().stopPathfinding();
+            Platform.CURRENT.stopPathfinding(brain);
             steerSpeed = 0;
         }
     }
@@ -263,7 +257,7 @@ final class Steering implements Mover {
         if (steered) facing = (float) Math.toDegrees(Math.atan2(-(aim.getX() - now.getX()), aim.getZ() - now.getZ()));
         else if (faceAt != null && faceAt.getWorld() == now.getWorld())
             facing = (float) Math.toDegrees(Math.atan2(-(faceAt.getX() - now.getX()), faceAt.getZ() - now.getZ()));
-        else facing = brain.getBodyYaw();
+        else facing = yaw;
         // A mob swings round in a tick or two; an animal turning on the spot
         // shuffles round over half a second. So the drawn heading chases the
         // wanted one at a capped rate, and while it catches up the legs step.
@@ -304,7 +298,6 @@ final class Steering implements Mover {
         }
         brain.setVelocity(new Vector(fx * v, vy, fz * v));
         brain.setRotation(yaw, 0);
-        brain.setBodyYaw(yaw);
     }
 
     private Location withYaw(Location at) {
@@ -366,9 +359,8 @@ final class Steering implements Mover {
             aimIsTarget = true;
             return true;
         }
-        var path = brain.getPathfinder().findPath(target);
-        if (path == null) return false;
-        List<Location> points = path.getPoints();
+        List<Location> points = Platform.CURRENT.path(brain, target);
+        if (points == null) return false;
         for (int i = points.size() - 1; i >= 0; i--) {
             Location p = points.get(i).clone().add(0.5, 0, 0.5);
             double d = Math.hypot(p.getX() - at.getX(), p.getZ() - at.getZ());
@@ -402,7 +394,6 @@ final class Steering implements Mover {
         }
         brain.setVelocity(new Vector(fx * v, vy, fz * v));
         brain.setRotation(yaw, 0);
-        brain.setBodyYaw(yaw);
     }
 
     /** Something an animal walks through or straight over (air, grass, a carpet, a slab). */
@@ -455,38 +446,21 @@ final class Steering implements Mover {
         return true;
     }
 
-    /** The brain's only goal: keep the pathfinder off while steering, drive it when not. */
-    private final class Legs implements Goal<Mob> {
-        private final GoalKey<Mob> key;
-        private int ticks;
-
-        Legs(NamespacedKey key) {
-            this.key = GoalKey.of(Mob.class, key);
+    /** What the platform's legs read each tick: whether the steering has the brain, and where to walk when not. */
+    private final class Legs implements Platform.Legs {
+        @Override
+        public boolean steering() {
+            return frozen || steered || goal == null;
         }
 
         @Override
-        public boolean shouldActivate() {
-            return true;
+        public Location goal() {
+            return goal;
         }
 
         @Override
-        public void tick() {
-            boolean repath = ticks++ % 3 == 0;
-            if (frozen || steered || goal == null) {
-                brain.getPathfinder().stopPathfinding();
-                return;
-            }
-            if (repath) brain.getPathfinder().moveTo(goal, goalSpeed > 0.15 ? 1.3 : 0.6);
-        }
-
-        @Override
-        public @NotNull GoalKey<Mob> getKey() {
-            return key;
-        }
-
-        @Override
-        public @NotNull EnumSet<GoalType> getTypes() {
-            return EnumSet.of(GoalType.MOVE, GoalType.LOOK);
+        public double speed() {
+            return goalSpeed;
         }
     }
 }
