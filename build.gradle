@@ -13,7 +13,6 @@ subprojects {
         options.release = 21
         options.encoding = 'UTF-8'
         options.compilerArgs += ['-Xmaxerrs', '1000']
-        options.compilerArgs += ['-Xmaxerrs', '1000']
     }
 
     repositories {

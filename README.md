@@ -15,18 +15,23 @@ The engine bakes each file into item models drawn by obj³'s core shaders,
 builds a resource pack and serves it to players itself. Bakes are cached, so a
 restart only bakes what changed.
 
-**Needs** Paper on Minecraft 26.3 (pack format 97.1). It uses Paper's mob goal
-API and obj³'s 26.3 shaders.
+## Requirements
 
-This directory is three Gradle projects:
+- **Spigot or Paper on Minecraft 26.3.** The shaders and the pack format
+  (97.1) are that version's. On Paper, models that walk borrow Paper's mob
+  pathfinding; on Spigot they use a path search of the engine's own.
+- Players need nothing installed: the pack is sent to them as they join.
 
-| Project | Plugin | What it is |
-|---|---|---|
-| `engine` | `3DEngine` | The engine: baking, the pack, `/3d`, the API |
-| `pets` | `3DPets` | A Labrador that follows you and plays fetch: a worked example of the API |
-| `flamethrower` | `3DFlamethrower` | Parked. Not to be released |
+## Installing
 
-Build with `./gradlew build --offline` (JDK 17 or 21 to run Gradle).
+1. Put `3DEngine.jar` in `plugins/` and start the server.
+2. Open port **8163** (or set `pack.port` in `config.yml`), and set `pack.url`
+   to the address players reach it on, e.g. `http://play.example.com:8163`.
+   That is where they download the pack from.
+3. Put model files in `plugins/3DEngine/models/` and run `/3d reload`.
+
+Already sending your own pack? Set `pack.send: false` and merge
+`plugins/3DEngine/pack.zip` into yours.
 
 ## Commands
 
@@ -45,8 +50,30 @@ All need `3dengine.admin` (op by default). Look at a placed model to act on it.
 | `/3d reload` | Re-bakes the folder and re-sends the pack |
 | `/3d pack` | Re-sends you the pack |
 
-Right-clicking a model with seats sits you in the nearest free one
-(`3dengine.ride`, everyone by default). Sneak to get off.
+Right-clicking a model with seats sits you in the nearest free one. Sneak to
+get off.
+
+| Permission | Default | |
+|---|---|---|
+| `3dengine.admin` | op | `/3d` |
+| `3dengine.place` | op | Placing models with a model item (from `/3d give`) |
+| `3dengine.ride` | everyone | Sitting in a model's seats by right-clicking it |
+| `3dengine.update` | op | Told when a newer version is out |
+
+## Configuration
+
+`plugins/3DEngine/config.yml` has the pack server (`pack.*`), the default and
+largest detail a model keeps (`quality.*`, see below), and a height offset for
+seated riders. Two switches concern what the plugin connects to:
+
+- **`update-check: true`** asks SpigotMC every six hours whether a newer 3D
+  Engine is out, and if so tells the console and anybody with `3dengine.update`.
+  Set it to `false` to turn that off.
+- **`telemetry: true`** is an anonymous usage count: every 30 seconds a random
+  id the plugin made up the first time it started, how many players are online,
+  and the names of installed plugins that depend on 3D Engine go to
+  resourcepack.ai. No address, server name, player names or content. Set it to
+  `false` to turn it off.
 
 ## The model's .yml
 
@@ -175,7 +202,47 @@ All in `ai.resourcepack.engine3d.api.event`:
 
 A model has no health of its own: what a hit does is up to you.
 
+## Addons
+
+An addon is a plugin with `depend: [3DEngine]` that calls the API above and
+compiles against the engine's jar. [3D Pets](https://github.com/resourcepack-ai/3d-pets),
+a Labrador that follows you and plays fetch, is one, and its `build.gradle`
+shows how to compile against a released engine.
+
+## Building
+
+```
+./gradlew build        # engine/build/libs/3DEngine-<version>.jar
+```
+
+Gradle 8.10.2 needs a JDK it can run on: 17 or 21 work, 24 does not. If your
+default `java` is newer, `JAVA_HOME=/path/to/jdk-21 ./gradlew build`. The jar
+targets Java 21 through a toolchain Gradle downloads on its own.
+
+`3DEngine-<version>.jar` is the plugin. `3DEngine-<version>-plain.jar` is the
+same classes without the shaded library, for addons to compile against.
+
+`ai.resourcepack:common`, a small shared library (the update check and the
+usage count), comes from `https://repo.resourcepack.ai`, and is shaded into the
+jar and relocated.
+
+To try a model without a server, `./gradlew :engine:test --tests '*SampleBakeTest*' -Dsample=path/to/model.glb`
+bakes it (with its `.yml`, if it has one) and renders previews into
+`engine/build/previews/`.
+
+## Support
+
+Questions, bugs and suggestions: [resourcepack.ai/discord](https://resourcepack.ai/discord),
+or an issue on this repository.
+
+## Licence
+
+GPL-3.0-or-later. See [`LICENSE`](LICENSE).
+
 ## Credits
 
-obj³ (MIT, Godlander and contributors) draws the meshes; its shaders ship in the
-pack and its encoder is ported in `bake/ObjCubed.java`.
+[obj³](https://github.com/JagerMeistars/obj-cubed), after Godlander's
+[objmc](https://github.com/Godlander/objmc) (MIT, Godlander and contributors),
+draws the meshes: its core shaders ship in the pack (with their licence, in
+`engine/src/main/resources/pack/`) and its encoder is ported in
+`bake/ObjCubed.java`.

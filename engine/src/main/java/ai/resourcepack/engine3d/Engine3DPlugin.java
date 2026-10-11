@@ -5,9 +5,16 @@ import ai.resourcepack.engine3d.api.Model;
 import ai.resourcepack.engine3d.api.ModelInstance;
 import ai.resourcepack.engine3d.api.Mover;
 import ai.resourcepack.engine3d.runtime.Engine;
+import ai.resourcepack.common.update.UpdateCheck;
+import net.md_5.bungee.api.chat.BaseComponent;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.HoverEvent;
+import net.md_5.bungee.api.chat.TextComponent;
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.nio.file.Path;
@@ -20,6 +27,11 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
     private Engine runtime;
 
     private ai.resourcepack.common.telemetry.Heartbeat heartbeat;
+
+    /** This plugin's SpigotMC resource id: the number in its page's URL. */
+    private static final int SPIGOT_RESOURCE = 139510;
+
+    private UpdateCheck updates;
 
     @Override
     public void onEnable() {
@@ -35,10 +47,32 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
         heartbeat = ai.resourcepack.common.telemetry.Heartbeat.of(this, "3d-engine")
                 .enabledWhen(() -> getConfig().getBoolean("telemetry", true))
                 .start();
+        updates = UpdateCheck.spigot(this, SPIGOT_RESOURCE)
+                .name("3D Engine")
+                .permission("3dengine.update")
+                .enabledWhen(() -> getConfig().getBoolean("update-check", true))
+                .player(this::tellUpdate)
+                .start();
+    }
+
+    /** The join nudge: the sentence, then the link as one clickable piece. */
+    private void tellUpdate(Player player, UpdateCheck.Update update) {
+        BaseComponent words = TextComponent.fromLegacy(
+                ChatColor.AQUA + "3D " + ChatColor.GRAY + "3D Engine " + ChatColor.WHITE + update.latest()
+                        + ChatColor.GRAY + " is out (you have " + update.running() + "). ");
+        TextComponent link = new TextComponent("Get it on SpigotMC");
+        link.setColor(net.md_5.bungee.api.ChatColor.AQUA);
+        link.setUnderlined(true);
+        link.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, update.url()));
+        link.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                new net.md_5.bungee.api.chat.hover.content.Text(update.url())));
+        // Both go in a fresh component: a deserialised one's extras can't be added to.
+        player.spigot().sendMessage(new TextComponent(words, link));
     }
 
     @Override
     public void onDisable() {
+        if (updates != null) updates.stop();
         if (heartbeat != null) heartbeat.stop();
         Engine3D.Holder.set(null);
         if (runtime != null) runtime.disable();

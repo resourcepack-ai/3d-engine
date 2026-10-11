@@ -22,3 +22,6 @@ permissions:
   3dengine.ride:
     description: Sit in a model's seats by right-clicking it.
     default: true
+  3dengine.update:
+    description: Be told on joining when a newer 3D Engine is on SpigotMC.
+    default: op

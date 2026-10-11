@@ -1,5 +1,18 @@
+plugins {
+    // Downloads the Java 21 toolchain the build targets when Gradle runs on another JDK.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 rootProject.name = '3d-engine'
-include 'engine', 'pets', 'flamethrower'
+
+// The engine, and any addon kept beside it in this build. Each is included
+// only when its directory is here, so the engine builds on its own.
+include 'engine'
+['pets', 'flamethrower'].each { addon ->
+    if (file(addon).isDirectory()) {
+        include addon
+    }
+}
 
 // ai.resourcepack:common, the small library our plugins shade in, built from
 // source beside this one rather than fetched from repo.resourcepack.ai.

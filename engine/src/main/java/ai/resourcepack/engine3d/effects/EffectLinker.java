@@ -21,9 +21,9 @@ import java.util.regex.Pattern;
  * effect's diameter in blocks.
  *
  * The same contract, and the same marker, as the 3D shader objects
- * resourcepack.ai's Studio writes (its {@code lib/shaders/world.ts}); this is
- * that linker ported, pointed at 26.3's text shader (explicit varying locations,
- * and the order-independent transparency passes, which the effect's colour goes
+ * resourcepack.ai's Studio writes; this is Studio's linker ported, pointed at
+ * 26.3's text shader (explicit varying locations, and the order-independent
+ * transparency passes, which the effect's colour goes
  * through like any other text's). An effect may also read two things Studio's
  * do not have: {@code rpw_param}, a number 0..1 set per display through its
  * text opacity (a flame's age), and {@code rpw_world} and {@code rpw_radius},
