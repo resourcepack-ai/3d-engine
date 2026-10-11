@@ -35,7 +35,7 @@ Already sending your own pack? Set `pack.send: false` and merge
 
 ## Commands
 
-All need `3dengine.admin` (op by default). Look at a placed model to act on it.
+Each has its own permission (below), all op by default. Look at a placed model to act on it.
 
 | Command | Does |
 |---|---|
@@ -53,12 +53,36 @@ All need `3dengine.admin` (op by default). Look at a placed model to act on it.
 Right-clicking a model with seats sits you in the nearest free one. Sneak to
 get off.
 
+Every subcommand has its own node, so you can hand out exactly the ones you
+want. `3dengine.admin` grants every command and placing with a model item in
+one line; the plugin never checks it itself. Somebody with none of the nodes
+gets a "no permission" message, and tab-completion only offers what they may
+use.
+
 | Permission | Default | |
 |---|---|---|
-| `3dengine.admin` | op | `/3d` |
+| `3dengine.admin` | op | All of the below except riding and update notices |
+| `3dengine.list` | op | `/3d list` |
+| `3dengine.place.command` | op | `/3d place` |
+| `3dengine.give` | op | `/3d give`, to yourself |
+| `3dengine.give.others` | op | `/3d give <model> <player>`, to somebody else (needs `3dengine.give` too) |
+| `3dengine.remove` | op | `/3d remove` |
+| `3dengine.scale` | op | `/3d scale` |
+| `3dengine.rotate` | op | `/3d rotate` |
+| `3dengine.state` | op | `/3d state` |
+| `3dengine.sit` | op | `/3d sit` |
+| `3dengine.info` | op | `/3d info` |
+| `3dengine.quality` | op | `/3d quality` |
+| `3dengine.effect` | op | `/3d effect`, including `/3d effect clear` |
+| `3dengine.reload` | op | `/3d reload` |
+| `3dengine.pack` | op | `/3d pack` |
 | `3dengine.place` | op | Placing models with a model item (from `/3d give`) |
 | `3dengine.ride` | everyone | Sitting in a model's seats by right-clicking it |
 | `3dengine.update` | op | Told when a newer version is out |
+
+`/3d place` has `3dengine.place.command` rather than `3dengine.place` because
+`3dengine.place` already meant using a model item: giving players the items
+does not also let them put down any model they like.
 
 ## Configuration
 

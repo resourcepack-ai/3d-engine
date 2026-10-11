@@ -8,16 +8,74 @@ commands:
   3d:
     description: Place, resize, animate and reload 3D models.
     usage: /3d help
-    permission: 3dengine.admin
     aliases: [engine3d]
+# One node per /3d subcommand, checked by the plugin itself, so /3d carries no
+# permission of its own. 3dengine.admin grants every command and placing with a
+# model item, for a server that wants them all in one line; nothing checks it.
 permissions:
   3dengine.admin:
-    description: Use /3d.
+    description: Every /3d command, and placing models with a model item. A convenience parent, not a node anything checks.
     default: op
     children:
+      3dengine.list: true
+      3dengine.place.command: true
+      3dengine.give: true
+      3dengine.give.others: true
+      3dengine.remove: true
+      3dengine.scale: true
+      3dengine.rotate: true
+      3dengine.state: true
+      3dengine.sit: true
+      3dengine.info: true
+      3dengine.quality: true
+      3dengine.effect: true
+      3dengine.reload: true
+      3dengine.pack: true
       3dengine.place: true
+  3dengine.list:
+    description: /3d list, every model and any that failed to load.
+    default: op
+  3dengine.place.command:
+    description: /3d place, put any model down where you look.
+    default: op
+  3dengine.give:
+    description: /3d give, a model item for yourself.
+    default: op
+  3dengine.give.others:
+    description: /3d give <model> <player>, a model item for somebody else (on top of 3dengine.give).
+    default: op
+  3dengine.remove:
+    description: /3d remove, take away the model you look at.
+    default: op
+  3dengine.scale:
+    description: /3d scale, resize the model you look at.
+    default: op
+  3dengine.rotate:
+    description: /3d rotate, turn the model you look at.
+    default: op
+  3dengine.state:
+    description: /3d state, switch the animation of the model you look at.
+    default: op
+  3dengine.sit:
+    description: /3d sit, sit in a seat of the model you look at, by name.
+    default: op
+  3dengine.info:
+    description: /3d info, a model's size, states, seats and hitboxes.
+    default: op
+  3dengine.quality:
+    description: /3d quality, see or change how detailed a model is baked (re-bakes it).
+    default: op
+  3dengine.effect:
+    description: /3d effect, put down or clear shader effects.
+    default: op
+  3dengine.reload:
+    description: /3d reload, bake the models folder again.
+    default: op
+  3dengine.pack:
+    description: /3d pack, have the resource pack sent to you again.
+    default: op
   3dengine.place:
-    description: Place models with a model item.
+    description: Place models with a model item (from /3d give).
     default: op
   3dengine.ride:
     description: Sit in a model's seats by right-clicking it.

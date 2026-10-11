@@ -34,7 +34,6 @@ import java.util.Locale;
 final class Commands implements CommandExecutor, TabCompleter, Listener {
 
     private static final NamespacedKey PLACES = new NamespacedKey("3dengine", "places");
-    private static final List<String> SUBS = List.of("list", "place", "give", "remove", "scale", "rotate", "state", "sit", "info", "quality", "effect", "reload", "pack");
 
     private final Engine engine;
     private final JavaPlugin plugin;
@@ -50,8 +49,15 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
         to.sendMessage(ChatColor.AQUA + "3D " + ChatColor.GRAY + text);
     }
 
+    /** Whether {@code sender} may run {@code /3d <sub>}. */
+    private static boolean allowed(CommandSender sender, String sub) {
+        return CommandPermissions.SUBS.contains(sub) && sender.hasPermission(CommandPermissions.permissionFor(sub));
+    }
+
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String @NotNull [] args) {
+        // Permissions are the sender's own, also when the console acts as a player below.
+        CommandSender actor = sender;
         // From the console, a trailing player name acts as that player: /3d effect fire 2 Steve.
         if (!(sender instanceof Player) && args.length > 1) {
             Player as = plugin.getServer().getPlayerExact(args[args.length - 1]);
@@ -61,6 +67,10 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
             }
         }
         String sub = args.length == 0 ? "help" : args[0].toLowerCase(Locale.ROOT);
+        if (CommandPermissions.SUBS.contains(sub) && !allowed(actor, sub)) {
+            say(sender, ChatColor.RED + "You need " + CommandPermissions.permissionFor(sub) + " for that.");
+            return true;
+        }
         switch (sub) {
             case "list" -> {
                 if (engine.loadedModels().isEmpty()) say(sender, "No models yet. Put .glb, .gltf or .obj files in " + plugin.getDataFolder().getName() + "/models and run /3d reload.");
@@ -146,6 +156,10 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                 if (m == null) return true;
                 Player to = args.length > 2 ? plugin.getServer().getPlayerExact(args[2]) : player(sender);
                 if (to == null) return usage(sender, "/3d give <model> <player>");
+                if (to != actor && !actor.hasPermission(CommandPermissions.othersPermissionFor("give"))) {
+                    say(sender, ChatColor.RED + "You need " + CommandPermissions.othersPermissionFor("give") + " to give to somebody else.");
+                    return true;
+                }
                 to.getInventory().addItem(placer(m));
                 say(sender, "Gave " + to.getName() + " a " + m.name() + ": right-click a block to place it.");
             }
@@ -203,12 +217,22 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                         m.spec.look == null ? "no" : m.spec.look.bone != null ? "with its " + m.spec.look.bone : "with its whole body",
                         Instance.boxesOf(m).size(), Instance.boxesOf(m).size() == 1 ? "" : "es", m.spec.solid ? ", solid" : ""));
             }
-            default -> {
-                say(sender, "/3d list | place <model> [scale] | give <model> | remove | scale <n> | rotate <deg> | state <state> | sit [seat] | info [model] | quality [model] [triangles] | effect <name> [size] | reload | pack");
-                say(sender, "Look at a placed model to remove, scale, rotate or animate it.");
-            }
+            default -> help(actor, sender);
         }
         return true;
+    }
+
+    /** The subcommands {@code actor} may run, and only those. */
+    private static void help(CommandSender actor, CommandSender to) {
+        List<String> theirs = new ArrayList<>();
+        for (String sub : CommandPermissions.SUBS) if (allowed(actor, sub)) theirs.add(CommandPermissions.USAGE.get(sub));
+        if (theirs.isEmpty()) {
+            say(to, ChatColor.RED + "You don't have permission to use /3d.");
+            return;
+        }
+        say(to, "/3d " + String.join(" | ", theirs));
+        if (allowed(actor, "remove") || allowed(actor, "scale") || allowed(actor, "rotate") || allowed(actor, "state"))
+            say(to, "Look at a placed model to remove, scale, rotate or animate it.");
     }
 
     private static boolean usage(CommandSender to, String text) {
@@ -308,7 +332,10 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String @NotNull [] args) {
         List<String> out = new ArrayList<>();
         if (args.length == 1) {
-            for (String s : SUBS) if (s.startsWith(args[0].toLowerCase(Locale.ROOT))) out.add(s);
+            // Only what they may run: completing a command that then refuses is worse than not completing it.
+            for (String s : CommandPermissions.SUBS) if (s.startsWith(args[0].toLowerCase(Locale.ROOT)) && allowed(sender, s)) out.add(s);
+        } else if (!allowed(sender, args[0].toLowerCase(Locale.ROOT))) {
+            return out;
         } else if (args.length == 2 && (args[0].equalsIgnoreCase("place") || args[0].equalsIgnoreCase("give") || args[0].equalsIgnoreCase("info") || args[0].equalsIgnoreCase("quality"))) {
             for (String m : engine.loadedModels().keySet()) if (m.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(m);
         } else if (args.length == 2 && args[0].equalsIgnoreCase("effect")) {
