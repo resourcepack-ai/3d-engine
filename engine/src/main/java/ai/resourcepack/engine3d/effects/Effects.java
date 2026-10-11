@@ -1,9 +1,9 @@
-package ai.resourcepack.engine3d.runtime;
+package ai.resourcepack.engine3d.effects;
 
 import ai.resourcepack.engine3d.api.EffectInstance;
 import ai.resourcepack.engine3d.api.Particle;
 import ai.resourcepack.engine3d.bake.ObjCubed;
-import ai.resourcepack.engine3d.effects.EffectLinker;
+import ai.resourcepack.engine3d.runtime.platform.Platform;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -29,10 +29,11 @@ import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 /**
- * Shader effects: the {@code effects/} folder linked into the pack's text
- * shader, the displays that draw them, and the particles the engine flies.
+ * Shader effects as the server runs them: the {@code effects/} folder linked
+ * into the pack's text shader (by {@link EffectLinker}), the displays that draw
+ * them, and the particles the engine flies.
  */
-final class Effects {
+public final class Effects {
 
     static final String FONT = "3dengine:effects";
     static final String MARKER = "\uE000";
@@ -52,16 +53,16 @@ final class Effects {
     private final Map<EffectImpl, Long> idleSince = new java.util.HashMap<>();
     private long ticks;
 
-    Effects(Path folder, Logger log) {
+    public Effects(Path folder, Logger log) {
         this.folder = folder;
         this.log = log;
     }
 
-    record Linked(Map<String, Integer> index, Map<String, byte[]> files, List<String> errors) {
+    public record Linked(Map<String, Integer> index, Map<String, byte[]> files, List<String> errors) {
     }
 
     /** Reads and links the folder. Off the main thread. */
-    Linked link(ClassLoader jar) throws IOException {
+    public Linked link(ClassLoader jar) throws IOException {
         Files.createDirectories(folder);
         List<EffectLinker.Effect> effects = new ArrayList<>();
         List<String> errors = new ArrayList<>();
@@ -105,17 +106,17 @@ final class Effects {
         }
     }
 
-    void use(Map<String, Integer> fresh) {
+    public void use(Map<String, Integer> fresh) {
         index = Map.copyOf(fresh);
     }
 
-    java.util.Set<String> names() {
+    public java.util.Set<String> names() {
         return index.keySet();
     }
 
     // ---- displays ----------------------------------------------------------------
 
-    EffectInstance spawn(String name, Location at, double size) {
+    public EffectInstance spawn(String name, Location at, double size) {
         return spawn(name, at, size, false, t -> {});
     }
 
@@ -125,7 +126,7 @@ final class Effects {
      * display before it enters the world, so whom it is shown to is settled
      * before anybody is sent it.
      */
-    EffectInstance spawn(String name, Location at, double size, boolean viewModel, java.util.function.Consumer<TextDisplay> before) {
+    public EffectInstance spawn(String name, Location at, double size, boolean viewModel, java.util.function.Consumer<TextDisplay> before) {
         Integer id = index.get(name);
         if (id == null) throw new IllegalArgumentException("No effect called " + name);
         int blue = viewModel ? EffectLinker.SIGNATURE_BLUE_VIEW_MODEL : EffectLinker.SIGNATURE_BLUE;
@@ -222,7 +223,7 @@ final class Effects {
 
     // ---- particles ---------------------------------------------------------------
 
-    Particle particle(String name, Location at, Vector velocity, Particle.Options o) {
+    public Particle particle(String name, Location at, Vector velocity, Particle.Options o) {
         Location start = at.clone();
         start.setYaw(0);
         start.setPitch(0);
@@ -265,7 +266,7 @@ final class Effects {
         idleSince.put(e, ticks);
     }
 
-    void tick() {
+    public void tick() {
         ticks++;
         for (Iterator<ParticleImpl> it = particles.iterator(); it.hasNext(); ) {
             ParticleImpl p = it.next();
@@ -289,7 +290,7 @@ final class Effects {
         }
     }
 
-    void clear() {
+    public void clear() {
         for (ParticleImpl p : particles) p.effect.remove();
         particles.clear();
         for (var pool : idle.values()) pool.forEach(EffectImpl::remove);

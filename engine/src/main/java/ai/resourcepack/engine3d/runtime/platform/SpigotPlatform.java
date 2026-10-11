@@ -1,5 +1,6 @@
-package ai.resourcepack.engine3d.runtime;
+package ai.resourcepack.engine3d.runtime.platform;
 
+import ai.resourcepack.engine3d.runtime.movement.Terrain;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -71,6 +72,13 @@ final class SpigotPlatform implements Platform {
 
     private static Method place;
     private static boolean looked;
+    /** Set while a seat's riders are lifted off and put back to move it, so that is not taken for getting out. */
+    private static boolean reseating;
+
+    @Override
+    public boolean reseating() {
+        return reseating;
+    }
 
     @Override
     public void moveWithRiders(Entity entity, Location to) {
@@ -92,13 +100,13 @@ final class SpigotPlatform implements Platform {
             }
         }
         List<Entity> riders = new ArrayList<>(entity.getPassengers());
-        Interactions.reseating = true;
+        reseating = true;
         try {
             for (Entity r : riders) entity.removePassenger(r);
             entity.teleport(to);
             for (Entity r : riders) entity.addPassenger(r);
         } finally {
-            Interactions.reseating = false;
+            reseating = false;
         }
     }
 
@@ -198,10 +206,10 @@ final class SpigotPlatform implements Platform {
 
     private static boolean standable(World w, int x, int y, int z) {
         Block below = w.getBlockAt(x, y - 1, z);
-        return open(w, x, y, z) && open(w, x, y + 1, z) && !Steering.clear(below) && !below.isLiquid();
+        return open(w, x, y, z) && open(w, x, y + 1, z) && !Terrain.clear(below) && !below.isLiquid();
     }
 
     private static boolean open(World w, int x, int y, int z) {
-        return Steering.clear(w.getBlockAt(x, y, z));
+        return Terrain.clear(w.getBlockAt(x, y, z));
     }
 }

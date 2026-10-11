@@ -1,4 +1,7 @@
-package ai.resourcepack.engine3d.bake;
+package ai.resourcepack.engine3d.bake.mesh;
+
+import ai.resourcepack.engine3d.bake.ObjCubed;
+import ai.resourcepack.engine3d.bake.rig.Rig;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;

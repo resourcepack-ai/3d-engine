@@ -1,4 +1,4 @@
-package ai.resourcepack.engine3d.bake;
+package ai.resourcepack.engine3d.bake.rig;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;

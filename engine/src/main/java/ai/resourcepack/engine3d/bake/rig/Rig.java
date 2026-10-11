@@ -1,4 +1,6 @@
-package ai.resourcepack.engine3d.bake;
+package ai.resourcepack.engine3d.bake.rig;
+
+import ai.resourcepack.engine3d.bake.mesh.Mat;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -71,6 +73,11 @@ public final class Rig {
     double[][] slotBind;
 
     private final double[][] restWorld;
+
+    /** How many joint slots its vertices use. */
+    public int slotCount() {
+        return slotNode.length;
+    }
 
     /** The node slot {@code s} of a vertex's joints follows. */
     public int slotNodeOf(int s) {

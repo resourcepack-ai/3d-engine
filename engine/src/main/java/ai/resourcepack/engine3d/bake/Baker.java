@@ -1,5 +1,13 @@
 package ai.resourcepack.engine3d.bake;
 
+import ai.resourcepack.engine3d.bake.mesh.Atlas;
+import ai.resourcepack.engine3d.bake.mesh.Mat;
+import ai.resourcepack.engine3d.bake.mesh.Quads;
+import ai.resourcepack.engine3d.bake.mesh.Simplifier;
+import ai.resourcepack.engine3d.bake.rig.Gltf;
+import ai.resourcepack.engine3d.bake.rig.ObjLoader;
+import ai.resourcepack.engine3d.bake.rig.Rig;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -378,7 +386,7 @@ public final class Baker {
         Rig.Vert x = rig.verts.get(v);
         int best = 0;
         for (int k = 1; k < x.weights.length; k++) if (x.weights[k] > x.weights[best]) best = k;
-        return rig.slotNode[x.joints[best]];
+        return rig.slotNodeOf(x.joints[best]);
     }
 
     /** Nodes at or below any of {@code tops}. */
@@ -449,7 +457,7 @@ public final class Baker {
             double w = 0, all = 0;
             for (int k = 0; k < v.weights.length; k++) {
                 all += v.weights[k];
-                if (v.weights[k] > 0 && under[rig.slotNode[v.joints[k]]]) w += v.weights[k];
+                if (v.weights[k] > 0 && under[rig.slotNodeOf(v.joints[k])]) w += v.weights[k];
             }
             out[i] = all > 0 ? w / all : 0;
         }
@@ -583,7 +591,7 @@ public final class Baker {
     /** Vertices weighted to {@code node} take the weights of the nearest vertex that isn't. */
     private void rebind(int node, double[][] restAll) {
         Set<Integer> slots = new LinkedHashSet<>();
-        for (int s = 0; s < rig.slotNode.length; s++) if (rig.slotNode[s] == node) slots.add(s);
+        for (int s = 0; s < rig.slotCount(); s++) if (rig.slotNodeOf(s) == node) slots.add(s);
         List<Integer> users = new ArrayList<>(), donors = new ArrayList<>();
         for (int i = 0; i < rig.verts.size(); i++) {
             Rig.Vert v = rig.verts.get(i);

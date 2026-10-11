@@ -1,6 +1,7 @@
 package ai.resourcepack.engine3d.runtime;
 
 import ai.resourcepack.engine3d.api.ModelInstance;
+import ai.resourcepack.engine3d.runtime.movement.Terrain;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -267,7 +268,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
         org.bukkit.util.RayTraceResult hit = p.rayTraceBlocks(8);
         BlockFace face = hit == null ? null : hit.getHitBlockFace();
         Location at;
-        if (face == null || face == BlockFace.UP) at = b.getLocation().add(0.5, Steering.height(b) > 0 ? Steering.height(b) : 1, 0.5);
+        if (face == null || face == BlockFace.UP) at = b.getLocation().add(0.5, Terrain.height(b) > 0 ? Terrain.height(b) : 1, 0.5);
         else at = b.getRelative(face).getLocation().add(0.5, 0, 0.5);
         at.setYaw(p.getLocation().getYaw() + 180);
         return at;
@@ -322,7 +323,7 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
             return;
         }
         Block b = e.getClickedBlock();
-        Location at = e.getBlockFace() == BlockFace.UP ? b.getLocation().add(0.5, Steering.height(b) > 0 ? Steering.height(b) : 1, 0.5)
+        Location at = e.getBlockFace() == BlockFace.UP ? b.getLocation().add(0.5, Terrain.height(b) > 0 ? Terrain.height(b) : 1, 0.5)
                 : b.getRelative(e.getBlockFace()).getLocation().add(0.5, 0, 0.5);
         at.setYaw(e.getPlayer().getLocation().getYaw() + 180);
         engine.spawn(m.name(), at, true);

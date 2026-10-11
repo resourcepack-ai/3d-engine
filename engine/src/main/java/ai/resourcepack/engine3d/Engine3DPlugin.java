@@ -36,7 +36,7 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        getLogger().info("Running on " + ai.resourcepack.engine3d.runtime.Platform.CURRENT.name() + ".");
+        getLogger().info("Running on " + ai.resourcepack.engine3d.runtime.platform.Platform.CURRENT.name() + ".");
         runtime = new Engine(this, getFile().toPath());
         runtime.enable();
         Engine3D.Holder.set(this);

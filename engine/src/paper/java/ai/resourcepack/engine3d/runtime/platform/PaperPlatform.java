@@ -1,6 +1,5 @@
-package ai.resourcepack.engine3d.paper;
+package ai.resourcepack.engine3d.runtime.platform;
 
-import ai.resourcepack.engine3d.runtime.Platform;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;

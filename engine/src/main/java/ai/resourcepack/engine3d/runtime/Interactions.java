@@ -2,6 +2,7 @@ package ai.resourcepack.engine3d.runtime;
 
 import ai.resourcepack.engine3d.api.event.ModelDamageEvent;
 import ai.resourcepack.engine3d.api.event.ModelInteractEvent;
+import ai.resourcepack.engine3d.runtime.platform.Platform;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
@@ -38,8 +39,6 @@ final class Interactions implements Listener {
 
     /** Whether a swing is heard before it lands (Paper); otherwise players are handled with the damage below. */
     private final boolean swings;
-    /** Set while a seat's riders are lifted off and put back to move it, so that is not taken for getting out. */
-    static boolean reseating;
 
     Interactions(Engine engine, org.bukkit.plugin.Plugin plugin) {
         this.engine = engine;
@@ -110,7 +109,7 @@ final class Interactions implements Listener {
     @EventHandler(priority = EventPriority.LOW)
     public void onDismount(EntityDismountEvent e) {
         Instance model = engine.owner(e.getDismounted());
-        if (model == null || reseating) return;
+        if (model == null || Platform.CURRENT.reseating()) return;
         if (model.leaving(e.getEntity(), Platform.CURRENT.cancellable(e))) e.setCancelled(true);
     }
 

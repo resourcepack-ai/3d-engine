@@ -1,4 +1,4 @@
-package ai.resourcepack.engine3d.bake;
+package ai.resourcepack.engine3d.bake.mesh;
 
 /**
  * 4x4 matrices (column-major, as glTF stores them), quaternions ([x, y, z, w])

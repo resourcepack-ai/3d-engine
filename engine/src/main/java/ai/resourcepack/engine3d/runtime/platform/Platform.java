@@ -1,4 +1,4 @@
-package ai.resourcepack.engine3d.runtime;
+package ai.resourcepack.engine3d.runtime.platform;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
@@ -16,9 +16,10 @@ import java.util.function.Consumer;
  * What only Paper can do, and what Spigot does instead.
  *
  * The plugin compiles against Spigot's API, so nothing Paper-only can creep
- * into it unnoticed. Paper's half is in {@code src/paper}, compiled against
- * Paper's API and loaded only when the server is Paper; on Spigot this
- * package's {@link SpigotPlatform} stands in.
+ * into it unnoticed. Paper's half, {@code PaperPlatform}, is in this same
+ * package under {@code src/paper}, compiled against Paper's API and loaded
+ * only when the server is Paper; on Spigot {@link SpigotPlatform} stands in.
+ * {@link Blocks} stands in for one more thing Paper has and Spigot lacks.
  */
 public interface Platform {
 
@@ -27,7 +28,7 @@ public interface Platform {
     private static Platform load() {
         try {
             Class.forName("com.destroystokyo.paper.entity.ai.Goal");
-            return (Platform) Class.forName("ai.resourcepack.engine3d.paper.PaperPlatform").getConstructor().newInstance();
+            return (Platform) Class.forName("ai.resourcepack.engine3d.runtime.platform.PaperPlatform").getConstructor().newInstance();
         } catch (ReflectiveOperationException | LinkageError e) {
             return new SpigotPlatform();
         }
@@ -62,6 +63,15 @@ public interface Platform {
 
     /** Moves an entity that has riders, keeping them on. */
     void moveWithRiders(Entity entity, Location to);
+
+    /**
+     * True while {@link #moveWithRiders} has lifted a seat's riders off to put
+     * them back, so the dismounts that causes are not taken for getting out.
+     * Only a platform that cannot move a ridden entity outright ever does.
+     */
+    default boolean reseating() {
+        return false;
+    }
 
     /** Whether this dismount may be cancelled (on Spigot, every one may). */
     boolean cancellable(EntityDismountEvent event);

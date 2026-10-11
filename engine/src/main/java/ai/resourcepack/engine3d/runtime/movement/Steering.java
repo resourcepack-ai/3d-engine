@@ -1,7 +1,8 @@
-package ai.resourcepack.engine3d.runtime;
+package ai.resourcepack.engine3d.runtime.movement;
 
 import ai.resourcepack.engine3d.api.ModelInstance;
 import ai.resourcepack.engine3d.api.Mover;
+import ai.resourcepack.engine3d.runtime.platform.Platform;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -24,9 +25,9 @@ import java.util.Map;
  * onto it at an animal's rate and easing its speed up and down. The pathfinder
  * only drives when nothing straight gets there.
  */
-final class Steering implements Mover {
+public final class Steering implements Mover {
 
-    private final Instance body;
+    private final ModelInstance body;
     private final Mob brain;
 
     // Tuning, from the model's locomotion block.
@@ -64,21 +65,20 @@ final class Steering implements Mover {
     private ai.resourcepack.engine3d.bake.Spec.Drive drive;
     private double driveSpeed;
 
-    Steering(Instance body, Mob brain) {
+    public Steering(ModelInstance body, Mob brain) {
         this.body = body;
         this.brain = brain;
-        Map<String, Object> loco = body.model.locomotion();
-        idleState = str(loco, "idle", body.model.defaultState());
-        walkState = str(loco, "walk", body.model.states().contains("walk") ? "walk" : idleState);
-        runState = str(loco, "run", body.model.states().contains("run") ? "run" : walkState);
-        turnState = str(loco, "turn", body.model.states().contains("turn") ? "turn" : idleState);
+        Map<String, Object> loco = body.model().locomotion();
+        idleState = str(loco, "idle", body.model().defaultState());
+        walkState = str(loco, "walk", body.model().states().contains("walk") ? "walk" : idleState);
+        runState = str(loco, "run", body.model().states().contains("run") ? "run" : walkState);
+        turnState = str(loco, "turn", body.model().states().contains("turn") ? "turn" : idleState);
         walkAbove = num(loco, "walk-above", 0.035);
         runAbove = num(loco, "run-above", 0.13);
         turnStanding = (float) num(loco, "turn-standing", 9);
         turnMoving = (float) num(loco, "turn-moving", 14);
         last = brain.getLocation();
         yaw = brain.getLocation().getYaw();
-        body.mover = this;
     }
 
     private static String str(Map<String, Object> m, String k, String fallback) {
@@ -92,7 +92,7 @@ final class Steering implements Mover {
     }
 
     /** Clears the brain's own AI and puts the steering goal in. */
-    static void prepare(Mob brain, Steering steering, org.bukkit.plugin.Plugin plugin) {
+    public static void prepare(Mob brain, Steering steering, org.bukkit.plugin.Plugin plugin) {
         brain.setInvisible(true);
         brain.setSilent(true);
         brain.setInvulnerable(true);
@@ -211,7 +211,7 @@ final class Steering implements Mover {
     }
 
     /** Gives the controls to {@code driver} (null takes them back). */
-    void drive(org.bukkit.entity.Player driver, ai.resourcepack.engine3d.bake.Spec.Drive drive) {
+    public void drive(org.bukkit.entity.Player driver, ai.resourcepack.engine3d.bake.Spec.Drive drive) {
         if (driver == null && this.driver != null) {
             driveSpeed = 0;
             brain.setVelocity(new Vector(0, brain.getVelocity().getY(), 0));
@@ -220,14 +220,14 @@ final class Steering implements Mover {
         this.drive = drive;
     }
 
-    void removeBrain() {
+    public void removeBrain() {
         removed = true;
         brain.remove();
     }
 
     // ---- each tick --------------------------------------------------------------
 
-    void tick() {
+    public void tick() {
         Location now = brain.getLocation();
         long time = now.getWorld().getGameTime();
         double moved = now.getWorld() == last.getWorld() ? Math.hypot(now.getX() - last.getX(), now.getZ() - last.getZ()) : 0;
@@ -293,7 +293,7 @@ final class Steering implements Mover {
         if (brain.isOnGround()) {
             double dir = v >= 0 ? 0.6 + Math.abs(v) * 2 : -0.6 - Math.abs(v) * 2;
             Block ahead = brain.getLocation().add(fx * dir, 0, fz * dir).getBlock();
-            if (Math.abs(v) > 0.02 && !clear(ahead) && height(ahead) <= 1.0 && clear(ahead.getRelative(0, 1, 0)) && clear(ahead.getRelative(0, 2, 0))) vy = 0.42;
+            if (Math.abs(v) > 0.02 && !Terrain.clear(ahead) && Terrain.height(ahead) <= 1.0 && Terrain.clear(ahead.getRelative(0, 1, 0)) && Terrain.clear(ahead.getRelative(0, 2, 0))) vy = 0.42;
             if (in.isJump() && drive.jump > 0) vy = drive.jump;
         }
         brain.setVelocity(new Vector(fx * v, vy, fz * v));
@@ -354,7 +354,7 @@ final class Steering implements Mover {
         replanAt = time + 5;
         aim = null;
         aimIsTarget = false;
-        if (walkable(at, target)) {
+        if (Terrain.walkable(at, target)) {
             aim = target.clone();
             aimIsTarget = true;
             return true;
@@ -365,7 +365,7 @@ final class Steering implements Mover {
             Location p = points.get(i).clone().add(0.5, 0, 0.5);
             double d = Math.hypot(p.getX() - at.getX(), p.getZ() - at.getZ());
             if (d > 24 || d < 0.6) continue;
-            if (walkable(at, p)) {
+            if (Terrain.walkable(at, p)) {
                 aim = p;
                 return true;
             }
@@ -390,60 +390,10 @@ final class Steering implements Mover {
         if (brain.isOnGround()) {
             // A block in the way that it can hop up: hop.
             Block ahead = brain.getLocation().add(fx * 0.6, 0, fz * 0.6).getBlock();
-            if (!clear(ahead) && height(ahead) <= 1.0 && clear(ahead.getRelative(0, 1, 0)) && clear(ahead.getRelative(0, 2, 0))) vy = 0.42;
+            if (!Terrain.clear(ahead) && Terrain.height(ahead) <= 1.0 && Terrain.clear(ahead.getRelative(0, 1, 0)) && Terrain.clear(ahead.getRelative(0, 2, 0))) vy = 0.42;
         }
         brain.setVelocity(new Vector(fx * v, vy, fz * v));
         brain.setRotation(yaw, 0);
-    }
-
-    /** Something an animal walks through or straight over (air, grass, a carpet, a slab). */
-    static boolean clear(Block b) {
-        return !b.isLiquid() && (b.isPassable() || height(b) <= 0.6);
-    }
-
-    static double height(Block b) {
-        double top = 0;
-        for (var box : b.getCollisionShape().getBoundingBoxes()) top = Math.max(top, box.getMaxY());
-        return top;
-    }
-
-    /**
-     * Whether it can run straight from {@code from} to {@code to}: following
-     * the ground, up single steps, down drops of up to three, no water, and
-     * with room for its shoulders either side.
-     */
-    static boolean walkable(Location from, Location to) {
-        var world = from.getWorld();
-        double dx = to.getX() - from.getX(), dz = to.getZ() - from.getZ();
-        double len = Math.hypot(dx, dz);
-        if (len < 0.01) return true;
-        double ux = dx / len, uz = dz / len;
-        int y = from.getBlockY();
-        int steps = (int) Math.ceil(len / 0.4);
-        for (int i = 1; i <= steps; i++) {
-            double t = Math.min(len, i * 0.4);
-            double x = from.getX() + ux * t, z = from.getZ() + uz * t;
-            int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
-            if (!world.isChunkLoaded(bx >> 4, bz >> 4)) return false;
-            Block b = world.getBlockAt(bx, y, bz);
-            if (!clear(b)) {
-                if (height(b) > 1.0 || !clear(b.getRelative(0, 1, 0)) || !clear(b.getRelative(0, 2, 0))) return false;
-                y++;
-            } else {
-                int drop = 0;
-                while (drop < 4 && clear(world.getBlockAt(bx, y - 1, bz))) {
-                    y--;
-                    drop++;
-                }
-                if (drop == 4) return false;
-            }
-            if (world.getBlockAt(bx, y - 1, bz).isLiquid()) return false;
-            for (double s : new double[]{-0.3, 0.3}) {
-                Block side = world.getBlockAt((int) Math.floor(x - uz * s), y, (int) Math.floor(z + ux * s));
-                if (!clear(side) && !clear(side.getRelative(0, 1, 0))) return false;
-            }
-        }
-        return true;
     }
 
     /** What the platform's legs read each tick: whether the steering has the brain, and where to walk when not. */

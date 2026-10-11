@@ -1,4 +1,4 @@
-package ai.resourcepack.engine3d.bake;
+package ai.resourcepack.engine3d.bake.rig;
 
 import java.io.IOException;
 import java.nio.file.Files;

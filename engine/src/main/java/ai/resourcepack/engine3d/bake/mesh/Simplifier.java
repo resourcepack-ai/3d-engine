@@ -1,4 +1,4 @@
-package ai.resourcepack.engine3d.bake;
+package ai.resourcepack.engine3d.bake.mesh;
 
 import java.util.ArrayList;
 import java.util.HashMap;
