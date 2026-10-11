@@ -3,6 +3,9 @@
 # Put .glb, .gltf or .obj files in plugins/3DEngine/models/ and run /3d reload.
 # Each file can have a .yml of the same name beside it (scale, animations,
 # transitions, attachment points); see the README.
+#
+# After editing this file, run /3d reload: everything here takes effect then,
+# except pack.host, pack.port and pack.bind, which need a server restart.
 
 pack:
   # Serve the resource pack from this server over HTTP.
@@ -32,7 +35,8 @@ quality:
   max-triangles: 200000
   max-texture-width: 2048
   # Per model, set in game with /3d quality <model> <triangles> [texture width].
-  # These win over the model's own .yml.
+  # These win over the model's own .yml. /3d quality reads this file before it
+  # saves, so edits you have made here by hand are kept.
   models: {}
 
 seats:

@@ -30,7 +30,7 @@ import java.util.Locale;
 
 /**
  * {@code /3d}: list, place, remove, scale, rotate, animate and give models, and
- * re-bake the folder. A model is picked by looking at it.
+ * re-read config.yml and re-bake the folder. A model is picked by looking at it.
  */
 final class Commands implements CommandExecutor, TabCompleter, Listener {
 
@@ -102,6 +102,8 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
                 placedEffects.add(engine.effect(args[1].toLowerCase(Locale.ROOT), at.add(0, size / 2, 0), size));
             }
             case "reload" -> {
+                // config.yml first, so an edit to it applies without a restart.
+                if (engine.rereadConfig(sender)) say(sender, "Re-read config.yml.");
                 say(sender, "Baking models...");
                 engine.reload(sender);
             }
@@ -316,7 +318,10 @@ final class Commands implements CommandExecutor, TabCompleter, Listener {
         String name = e.getItem().getItemMeta().getPersistentDataContainer().get(PLACES, PersistentDataType.STRING);
         if (name == null) return;
         e.setCancelled(true);
-        if (!e.getPlayer().hasPermission("3dengine.place")) return;
+        if (!e.getPlayer().hasPermission("3dengine.place")) {
+            say(e.getPlayer(), ChatColor.RED + "You need 3dengine.place to place models.");
+            return;
+        }
         LoadedModel m = engine.loadedModels().get(name);
         if (m == null) {
             say(e.getPlayer(), "That model isn't loaded any more.");

@@ -12,7 +12,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.ItemDisplay;
@@ -57,6 +59,13 @@ public final class Engine implements Listener {
     private PackServer server;
     private PackBuilder.Pack pack;
     private String packUrl;
+    /**
+     * The pack server's settings as it was started with: it is bound once, in
+     * {@link #enable}, so a change to these in config.yml needs a restart.
+     */
+    private boolean startedHost;
+    private int startedPort;
+    private String startedBind;
 
     private volatile Map<String, LoadedModel> models = Map.of();
     private final Map<UUID, Instance> instances = new LinkedHashMap<>();
@@ -84,21 +93,17 @@ public final class Engine implements Listener {
         } catch (Exception e) {
             plugin.getLogger().warning("Couldn't make the models folder: " + e.getMessage());
         }
-        int port = c.getInt("pack.port", 8163);
-        if (c.getBoolean("pack.host", true)) {
+        startedHost = c.getBoolean("pack.host", true);
+        startedPort = c.getInt("pack.port", 8163);
+        startedBind = c.getString("pack.bind", "");
+        if (startedHost) {
             try {
-                server = new PackServer(c.getString("pack.bind", ""), port);
+                server = new PackServer(startedBind, startedPort);
             } catch (Exception e) {
-                plugin.getLogger().severe("Couldn't serve the pack on port " + port + " (" + e.getMessage() + "); set pack.port to a free one");
+                plugin.getLogger().severe("Couldn't serve the pack on port " + startedPort + " (" + e.getMessage() + "); set pack.port to a free one");
             }
         }
-        String url = c.getString("pack.url", "");
-        if (url == null || url.isBlank()) {
-            String ip = Bukkit.getIp().isBlank() ? "127.0.0.1" : Bukkit.getIp();
-            url = "http://" + ip + ":" + port;
-            if (server != null) plugin.getLogger().warning("pack.url isn't set, so players are sent " + url + ": set it to the address players reach this server's port " + port + " on");
-        }
-        packUrl = url.replaceAll("/+$", "");
+        packUrl = packUrl(c, true);
 
         Bukkit.getPluginManager().registerEvents(this, plugin);
         Commands commands = new Commands(this, plugin);
@@ -194,6 +199,61 @@ public final class Engine implements Listener {
         }
     }
 
+    /**
+     * Where players download the pack from: {@code pack.url}, or this server's
+     * IP and the port the pack server was started on.
+     */
+    private String packUrl(FileConfiguration c, boolean warn) {
+        String url = c.getString("pack.url", "");
+        if (url == null || url.isBlank()) {
+            String ip = Bukkit.getIp().isBlank() ? "127.0.0.1" : Bukkit.getIp();
+            url = "http://" + ip + ":" + startedPort;
+            if (warn && server != null)
+                plugin.getLogger().warning("pack.url isn't set, so players are sent " + url + ": set it to the address players reach this server's port " + startedPort + " on");
+        }
+        return url.replaceAll("/+$", "");
+    }
+
+    /**
+     * Reads config.yml from disk again, for {@code /3d reload} and before
+     * {@code /3d quality} saves. Everything in it takes effect at once (the
+     * quality settings and the pack's format and description on the bake that
+     * follows) except {@code pack.host}, {@code pack.port} and
+     * {@code pack.bind}: the pack server is bound when the plugin starts, so
+     * those wait for a restart, and {@code to} is told when one of them has
+     * changed.
+     *
+     * <p>False, keeping the settings already loaded, when the file does not
+     * parse: Bukkit would otherwise load it as empty, and a {@code /3d quality}
+     * saved after that would write the near-empty result over the file.
+     */
+    boolean rereadConfig(CommandSender to) {
+        plugin.saveDefaultConfig(); // only if it was deleted: it comes back as shipped, comments and all
+        java.io.File file = new java.io.File(plugin.getDataFolder(), "config.yml");
+        try {
+            YamlConfiguration check = new YamlConfiguration();
+            check.options().parseComments(true);
+            check.load(file);
+        } catch (java.io.IOException | InvalidConfigurationException e) {
+            String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().lines().findFirst().orElse("");
+            plugin.getLogger().warning("config.yml can't be read, so the settings already loaded stay: " + e.getMessage());
+            to.sendMessage("3D Engine: config.yml can't be read (" + why + "), so the settings already loaded stay. Fix it and run /3d reload.");
+            return false;
+        }
+        plugin.reloadConfig();
+        FileConfiguration c = plugin.getConfig();
+        // Bukkit's default, made explicit: saveConfig keeps the file's comments only while this is on.
+        c.options().parseComments(true);
+        packUrl = packUrl(c, false);
+        List<String> restart = new ArrayList<>();
+        if (c.getBoolean("pack.host", true) != startedHost) restart.add("pack.host");
+        if (c.getInt("pack.port", 8163) != startedPort) restart.add("pack.port");
+        if (!java.util.Objects.equals(c.getString("pack.bind", ""), startedBind)) restart.add("pack.bind");
+        if (!restart.isEmpty())
+            to.sendMessage("3D Engine: " + String.join(", ", restart) + " changed, and the pack server only picks that up when the server restarts.");
+        return true;
+    }
+
     /** The quality settings as they are now, read on the main thread for a bake to use. */
     Registry.Quality quality() {
         FileConfiguration c = plugin.getConfig();
@@ -208,8 +268,17 @@ public final class Engine implements Listener {
                 c.getInt("quality.texture-width", 512), c.getInt("quality.max-texture-width", 2048), models);
     }
 
-    /** Sets (or, with zeros, clears) a model's own override, saves it and re-bakes. */
+    /**
+     * Sets (or, with zeros, clears) a model's own override, saves it and
+     * re-bakes. config.yml is read from disk first, so the save writes back
+     * what is in the file now, edits made by hand since the server started
+     * included, with only this model's keys changed.
+     */
     void setQuality(String model, int triangles, int textureWidth, CommandSender to) {
+        if (!rereadConfig(to)) {
+            to.sendMessage("3D Engine: " + model + "'s quality wasn't saved, so the file isn't overwritten.");
+            return;
+        }
         String key = "quality.models." + model.replace('.', ':');
         if (triangles <= 0 && textureWidth <= 0) plugin.getConfig().set(key, null);
         else {

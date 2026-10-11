@@ -22,6 +22,22 @@ restart only bakes what changed.
   pathfinding; on Spigot they use a path search of the engine's own.
 - Players need nothing installed: the pack is sent to them as they join.
 
+## Using it with other packs
+
+The models are new item models in their own `3dengine` namespace, but drawing
+them takes obj³'s **core shaders**, and those replace vanilla's: the pack always
+replaces the `block`, `entity`, `item` and `terrain` core shaders (and adds
+obj³'s `objmc_*.glsl` includes beside them), and when `effects/` holds an
+effect it replaces `text.vsh` and `text.fsh` too.
+
+A core shader is one file per name, so of two packs on a client that replace
+the same one, only the higher pack's is used. If another pack (another objmc
+or obj³ model pack, say) is above 3D Engine's and replaces any of those four,
+models stop drawing; if it is below, whatever its shader did is lost. The same
+goes for the text shaders and anything that replaces them, such as RP Engine's
+shader objects or UI Framework, when you use effects. Everything else in other
+packs (models, textures, sounds, fonts) stacks with this one as usual.
+
 ## Installing
 
 1. Put `3DEngine.jar` in `plugins/` and start the server.
@@ -47,7 +63,7 @@ Each has its own permission (below), all op by default. Look at a placed model t
 | `/3d info [model]` | Size, states, points, seats, hitboxes, and what it costs the client |
 | `/3d quality [model] [triangles\|reset] [texture width]` | How much detail a model keeps: shows the settings, or sets one model's and re-bakes |
 | `/3d effect <name> [size]` | Puts down a shader effect from `effects/` |
-| `/3d reload` | Re-bakes the folder and re-sends the pack |
+| `/3d reload` | Re-reads `config.yml`, re-bakes the folder and re-sends the pack |
 | `/3d pack` | Re-sends you the pack |
 
 Right-clicking a model with seats sits you in the nearest free one. Sneak to
@@ -57,7 +73,8 @@ Every subcommand has its own node, so you can hand out exactly the ones you
 want. `3dengine.admin` grants every command and placing with a model item in
 one line; the plugin never checks it itself. Somebody with none of the nodes
 gets a "no permission" message, and tab-completion only offers what they may
-use.
+use. Using a model item without `3dengine.place` places nothing and says which
+permission it needs.
 
 | Permission | Default | |
 |---|---|---|
@@ -88,7 +105,10 @@ does not also let them put down any model they like.
 
 `plugins/3DEngine/config.yml` has the pack server (`pack.*`), the default and
 largest detail a model keeps (`quality.*`, see below), and a height offset for
-seated riders. Two switches concern what the plugin connects to:
+seated riders. Edit it and run `/3d reload` and it takes effect, except for
+`pack.host`, `pack.port` and `pack.bind`, which the pack server only reads when
+the server starts (the reload says so when one of them has changed). Two
+switches concern what the plugin connects to:
 
 - **`update-check: true`** asks SpigotMC every six hours whether a newer 3D
   Engine is out, and if so tells the console and anybody with `3dengine.update`.
@@ -132,8 +152,8 @@ points:                # named places that follow a bone (a mouth, a hand)
 look:
   bone: Head           # only the head turns, on its neck; leave out to turn the whole model
   with: [Jaw]          # more bones that turn with it (see below)
-  yaw: 60              # the most it turns either way, degrees
-  pitch: 30
+  yaw: 70              # the most it turns either way, degrees
+  pitch: 35
   range: 8             # blocks
   speed: 9             # degrees per tick
   states: [idle, sit]  # states it looks in (default: all)
@@ -161,7 +181,8 @@ solid: true            # placed models fill their boxes with barriers
 512), and nothing keeps more than `quality.max-triangles` and
 `quality.max-texture-width`. `/3d quality <model> <triangles> [width]` sets one
 model's in game, over what its `.yml` says, and is kept in `config.yml`, so a
-plugin that re-copies its model files cannot undo it. An animated model stores
+plugin that re-copies its model files cannot undo it. It reads `config.yml`
+from disk before saving, so edits you have made to the file by hand survive. An animated model stores
 its whole mesh once per frame and its texture once per animation, so the
 texture is usually what makes a pack big.
 

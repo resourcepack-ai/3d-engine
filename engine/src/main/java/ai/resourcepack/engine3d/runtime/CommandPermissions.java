@@ -23,7 +23,7 @@ final class CommandPermissions {
             Map.entry("list", "list"), Map.entry("place", "place <model> [scale]"), Map.entry("give", "give <model> [player]"),
             Map.entry("remove", "remove"), Map.entry("scale", "scale <n>"), Map.entry("rotate", "rotate <deg>"),
             Map.entry("state", "state <state>"), Map.entry("sit", "sit [seat]"), Map.entry("info", "info [model]"),
-            Map.entry("quality", "quality [model] [triangles]"), Map.entry("effect", "effect <name> [size]"),
+            Map.entry("quality", "quality [model] [triangles|reset] [texture width]"), Map.entry("effect", "effect <name> [size]"),
             Map.entry("reload", "reload"), Map.entry("pack", "pack"));
 
     private CommandPermissions() {

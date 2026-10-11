@@ -20,9 +20,23 @@ import java.util.zip.ZipOutputStream;
 /**
  * The resource pack: obj³'s core shaders (from this jar) and every baked game
  * model, each as its own item model definition in the {@code 3dengine}
- * namespace, so nothing vanilla is overridden and a server can stack this pack
- * with any other. An item shows a game model through its {@code item_model}
+ * namespace. An item shows a game model through its {@code item_model}
  * component; the model's clock is the first {@code custom_model_data} colour.
+ *
+ * <p>The models and textures add to vanilla and replace nothing, but the pack
+ * does <b>replace vanilla core shaders</b>: {@code block}, {@code entity},
+ * {@code item} and {@code terrain} (each {@code .vsh} and {@code .fsh}) always,
+ * since that is how obj³ draws a mesh out of an item model, plus its
+ * {@code objmc_*.glsl} includes in the {@code minecraft} namespace; and
+ * {@code text.vsh}/{@code text.fsh} as well when {@code effects/} holds at
+ * least one effect (see {@code Effects}). A core shader is one file per name,
+ * so when another pack on the same client replaces any of the same ones, only
+ * the pack higher in the client's list has its shader used: above this one,
+ * models (or effects) stop drawing; below it, whatever that pack's shader did
+ * is lost. Packs that draw meshes with core shaders (objmc and its forks)
+ * replace the first four; RP Engine's shader objects and UI Framework replace
+ * the text shaders.
+ * Everything else (other packs' models, textures, sounds, fonts) stacks fine.
  */
 public final class PackBuilder {
 

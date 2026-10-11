@@ -51,7 +51,7 @@ public final class Spec {
     public Map<String, double[][]> item;
     /** Turning to look at players: the head alone (with a bone) or the whole model; null = it doesn't. */
     public Look look;
-    /** Places to sit, by name, in the order a right-click fills them. */
+    /** Places to sit, by name, in the order the file lists them. A right-click takes the free one nearest the player, not the first. */
     public Map<String, Seat> seats = new LinkedHashMap<>();
     /** Whether it can be clicked and hit at all. */
     public boolean hitbox = true;

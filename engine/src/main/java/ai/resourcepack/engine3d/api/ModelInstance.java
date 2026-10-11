@@ -54,7 +54,7 @@ public interface ModelInstance {
     /** Who sits where: seat name to rider, occupied seats only. */
     Map<String, Entity> riders();
 
-    /** Seats {@code rider} in {@code seat} (null = the first free one); false if it is taken, unknown or a plugin said no. */
+    /** Seats {@code rider} in {@code seat} (null = the free one nearest {@code rider}); false if it is taken, unknown or a plugin said no. */
     boolean mount(Entity rider, String seat);
 
     /** Gets {@code rider} out of whichever seat they are in, beside the model. */
