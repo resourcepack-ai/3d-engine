@@ -34,7 +34,7 @@ dependencies {
     paperCompileOnly 'io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT'
     // The small library our plugins shade in (the usage heartbeat), relocated
     // below so it never meets another plugin's copy.
-    implementation 'ai.resourcepack:common:0.2.1'
+    implementation 'ai.resourcepack:common:0.3.0'
 }
 
 // The shaded jar is the plugin. The plain one keeps a classifier so the two
