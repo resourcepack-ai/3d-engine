@@ -34,9 +34,26 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
     private UpdateCheck updates;
 
     @Override
+    public void onLoad() {
+        // Asked before the worlds load, so the answer is back for the startup banner.
+        ai.resourcepack.common.update.UpdateCheck.early(this, SPIGOT_RESOURCE);
+    }
+
+    @Override
     public void onEnable() {
         saveDefaultConfig();
-        getLogger().info("Running on " + ai.resourcepack.engine3d.runtime.platform.Platform.CURRENT.name() + ".");
+        if (updates != null) updates.stop();
+        updates = UpdateCheck.spigot(this, SPIGOT_RESOURCE)
+                .name("3D Engine")
+                .permission("3dengine.update")
+                .enabledWhen(() -> getConfig().getBoolean("update-check", true))
+                .player(this::tellUpdate);
+        ai.resourcepack.common.banner.StartupBanner banner = ai.resourcepack.common.banner.StartupBanner.begin(this)
+                .name("3D Engine")
+                .tagline("Any 3D model file, in game.")
+                .docs("https://resourcepack.ai/docs/3d-engine")
+                .updates(updates);
+        banner.ok("Platform", ai.resourcepack.engine3d.runtime.platform.Platform.CURRENT.name());
         runtime = new Engine(this, getFile().toPath());
         runtime.enable();
         Engine3D.Holder.set(this);
@@ -47,12 +64,9 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
         heartbeat = ai.resourcepack.common.telemetry.Heartbeat.of(this, "3d-engine")
                 .enabledWhen(() -> getConfig().getBoolean("telemetry", true))
                 .start();
-        updates = UpdateCheck.spigot(this, SPIGOT_RESOURCE)
-                .name("3D Engine")
-                .permission("3dengine.update")
-                .enabledWhen(() -> getConfig().getBoolean("update-check", true))
-                .player(this::tellUpdate)
-                .start();
+        updates.start();
+        banner.ok("Models", "Baked in the background, each logged as it is done");
+        banner.print();
     }
 
     /** The join nudge: the sentence, then the link as one clickable piece. */
