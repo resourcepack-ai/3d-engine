@@ -1,5 +1,6 @@
 package ai.resourcepack.engine3d.runtime;
 
+import ai.resourcepack.common.host.PackUploader;
 import ai.resourcepack.engine3d.api.Model;
 import ai.resourcepack.engine3d.api.ModelInstance;
 import ai.resourcepack.engine3d.api.Mover;
@@ -66,6 +67,14 @@ public final class Engine implements Listener {
     private boolean startedHost;
     private int startedPort;
     private String startedBind;
+    /** {@code pack.host: upload}: the pack goes to ResourcePack AI's pack host, and players are sent its link there. */
+    private boolean uploading;
+    private java.util.concurrent.ScheduledExecutorService uploads;
+    private PackUploader uploader;
+    /** Upload: the hex SHA-1 of the pack the pack host has. */
+    private volatile String hosted;
+    /** Upload: the hex SHA-1 whose upload failed, which this server serves meanwhile. */
+    private volatile String failed;
 
     private volatile Map<String, LoadedModel> models = Map.of();
     private final Map<UUID, Instance> instances = new LinkedHashMap<>();
@@ -93,9 +102,24 @@ public final class Engine implements Listener {
         } catch (Exception e) {
             plugin.getLogger().warning("Couldn't make the models folder: " + e.getMessage());
         }
-        startedHost = c.getBoolean("pack.host", true);
+        String mode = hostMode(c);
+        uploading = mode.equals("upload");
+        startedHost = mode.equals("serve");
         startedPort = c.getInt("pack.port", 8163);
         startedBind = c.getString("pack.bind", "");
+        if (uploading) {
+            uploader = new PackUploader(PackUploader.HOST, "3DEngine/" + plugin.getDescription().getVersion());
+            uploads = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "3DEngine pack upload");
+                t.setDaemon(true);
+                return t;
+            });
+            // Keeps the pack on the host, which forgets one nobody has touched for 30 days, and tries a failed upload again.
+            uploads.scheduleWithFixedDelay(() -> {
+                PackBuilder.Pack now = pack;
+                if (now != null) ensure(now);
+            }, PackUploader.TOUCH_HOURS, PackUploader.TOUCH_HOURS, java.util.concurrent.TimeUnit.HOURS);
+        }
         if (startedHost) {
             try {
                 server = new PackServer(startedBind, startedPort);
@@ -121,6 +145,7 @@ public final class Engine implements Listener {
     }
 
     public void disable() {
+        if (uploads != null) uploads.shutdownNow();
         if (server != null) server.stop();
         effects.clear();
         for (Instance i : new ArrayList<>(instances.values())) {
@@ -173,6 +198,11 @@ public final class Engine implements Listener {
         boolean changed = pack == null || !pack.hex().equals(built.hex());
         pack = built;
         if (server != null) server.serve(built);
+        // Sent once the pack host has it (see ensure), not before.
+        if (uploading && !built.hex().equals(hosted)) {
+            changed = false;
+            uploads.execute(() -> ensure(built));
+        }
         long now = Bukkit.getWorlds().get(0).getGameTime();
         for (Instance i : new ArrayList<>(instances.values())) {
             LoadedModel fresh = models.get(i.model.name());
@@ -197,6 +227,76 @@ public final class Engine implements Listener {
                 plugin.getLogger().log(Level.WARNING, "A ready task failed", e);
             }
         }
+    }
+
+    /**
+     * {@code pack.host}: {@code upload}, {@code serve} or {@code none}. Before
+     * there was a choice it was true or false, and true was the default: a
+     * server that set {@code pack.url} meant to serve it, and any other is
+     * better off uploading.
+     */
+    private static String hostMode(FileConfiguration c) {
+        String host = String.valueOf(c.get("pack.host", "upload")).trim().toLowerCase(java.util.Locale.ROOT);
+        return switch (host) {
+            case "serve", "upload" -> host;
+            case "false", "none", "off" -> "none";
+            case "true" -> c.getString("pack.url", "").isBlank() ? "upload" : "serve";
+            default -> "upload";
+        };
+    }
+
+    /** Makes sure the pack host has [p] (off the server thread), then sends it to the players online. */
+    private void ensure(PackBuilder.Pack p) {
+        try {
+            uploader.ensure(p.hex(), p.zip(), "the 3D Engine pack");
+            boolean first = !p.hex().equals(hosted);
+            boolean wasFailing = p.hex().equals(failed);
+            hosted = p.hex();
+            if (wasFailing) {
+                failed = null;
+                plugin.getLogger().info("The pack is on packs.resourcepack.ai now: players are sent it from there.");
+            }
+            if (first && !wasFailing) sendAllLater(p);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (java.io.IOException | RuntimeException e) {
+            if (p.hex().equals(hosted) || p.hex().equals(failed)) return; // there for weeks yet, or already served from here
+            failed = p.hex();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (server == null) {
+                    try {
+                        server = new PackServer(startedBind, startedPort);
+                    } catch (Exception bind) {
+                        plugin.getLogger().severe("Couldn't put the pack on packs.resourcepack.ai (" + e.getMessage() + "), nor serve it on port "
+                                + startedPort + " (" + bind.getMessage() + "), so players are not sent it. The upload is tried again every "
+                                + PackUploader.TOUCH_HOURS + " hours.");
+                        return;
+                    }
+                }
+                server.serve(p);
+                // Too big is not going to change on a retry: say what to do instead.
+                plugin.getLogger().warning(p.zip().length > PackUploader.MAX_BYTES
+                        ? "The pack is " + (p.zip().length / 1048576) + " MB, and packs.resourcepack.ai takes at most " + (PackUploader.MAX_BYTES / 1048576)
+                                + " MB, so this server serves it as " + packUrl + ". Set pack.url to the address players reach port " + startedPort
+                                + " on, or make the pack smaller with /3d quality."
+                        : "Couldn't put the pack on packs.resourcepack.ai (" + e.getMessage() + "), so this server serves it as "
+                                + packUrl + " meanwhile. The upload is tried again every " + PackUploader.TOUCH_HOURS + " hours.");
+                sendAll(p);
+            });
+        }
+    }
+
+    private void sendAllLater(PackBuilder.Pack p) {
+        try {
+            Bukkit.getScheduler().runTask(plugin, () -> sendAll(p));
+        } catch (IllegalStateException | IllegalArgumentException disabled) {
+            // 3D Engine stopped meanwhile.
+        }
+    }
+
+    private void sendAll(PackBuilder.Pack p) {
+        if (pack != p || !plugin.getConfig().getBoolean("pack.send", true)) return;
+        for (Player player : Bukkit.getOnlinePlayers()) send(player);
     }
 
     /**
@@ -246,7 +346,7 @@ public final class Engine implements Listener {
         c.options().parseComments(true);
         packUrl = packUrl(c, false);
         List<String> restart = new ArrayList<>();
-        if (c.getBoolean("pack.host", true) != startedHost) restart.add("pack.host");
+        if (!hostMode(c).equals(uploading ? "upload" : startedHost ? "serve" : "none")) restart.add("pack.host");
         if (c.getInt("pack.port", 8163) != startedPort) restart.add("pack.port");
         if (!java.util.Objects.equals(c.getString("pack.bind", ""), startedBind)) restart.add("pack.bind");
         if (!restart.isEmpty())
@@ -290,8 +390,12 @@ public final class Engine implements Listener {
     }
 
     void send(Player p) {
-        if (pack == null || server == null && plugin.getConfig().getString("pack.url", "").isBlank()) return;
-        String url = packUrl + "/pack/" + pack.hex() + ".zip";
+        if (pack == null) return;
+        String url;
+        if (uploading && pack.hex().equals(hosted)) url = uploader.linkFor(pack.hex());
+        else if (uploading && !pack.hex().equals(failed)) return; // still going up: sent once it is there
+        else if (server == null && plugin.getConfig().getString("pack.url", "").isBlank()) return;
+        else url = packUrl + "/pack/" + pack.hex() + ".zip";
         String prompt = plugin.getConfig().getString("pack.prompt", "");
         p.addResourcePack(PACK_ID, url, pack.sha1(), prompt == null || prompt.isEmpty() ? null : prompt, plugin.getConfig().getBoolean("pack.required", false));
     }

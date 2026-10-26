@@ -41,8 +41,11 @@ packs (models, textures, sounds, fonts) stacks with this one as usual.
 ## Installing
 
 1. Put `3DEngine.jar` in `plugins/` and start the server.
-2. Open port **8163** (or set `pack.port` in `config.yml`), and set `pack.url`
-   to the address players reach it on, e.g. `http://play.example.com:8163`.
+2. Nothing to set up for the pack: it is uploaded to ResourcePack AI's free
+   pack host and players download it from there (`pack.host: upload`). To
+   serve it yourself instead, set `pack.host: serve`, open port **8163** (or set
+   `pack.port`) and set `pack.url` to the address players reach it on, e.g.
+   `http://play.example.com:8163`.
    That is where they download the pack from.
 3. Put model files in `plugins/3DEngine/models/` and run `/3d reload`.
 

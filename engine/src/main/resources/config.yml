@@ -8,13 +8,23 @@
 # except pack.host, pack.port and pack.bind, which need a server restart.
 
 pack:
-  # Serve the resource pack from this server over HTTP.
-  host: true
+  # How players get the resource pack:
+  #   upload  The default. It goes to ResourcePack AI's pack host
+  #           (packs.resourcepack.ai), free, and players download it from there:
+  #           nothing to open or set up, on any host. It is only uploaded again
+  #           when it changes, it is kept while this server uses it (one nothing
+  #           has used for 30 days is deleted), and only the Minecraft client can
+  #           download it. Up to 95 MB. If an upload fails, this server serves it
+  #           as below until it works.
+  #   serve   This server serves it over HTTP, on the port and address below.
+  #   none    Not served: host plugins/3DEngine/pack.zip yourself and set url.
+  host: upload
+  # serve (or upload when it fails): the port to serve it on.
   port: 8163
   # The address to listen on; empty = all.
   bind: ""
-  # The address players download the pack from, e.g. http://play.example.com:8163
-  # Empty = this server's IP and the port above.
+  # serve and none: the address players download the pack from, e.g.
+  # http://play.example.com:8163. Empty = this server's IP and the port above.
   url: ""
   # Send the pack to players as they join (turn off if another plugin merges
   # plugins/3DEngine/pack.zip into its own pack).
