@@ -35,7 +35,7 @@ the same one, only the higher pack's is used. If another pack (another objmc
 or obj³ model pack, say) is above 3D Engine's and replaces any of those four,
 models stop drawing; if it is below, whatever its shader did is lost. The same
 goes for the text shaders and anything that replaces them, such as RP Engine's
-shader objects or UI Engine, when you use effects. Everything else in other
+shader objects or MC GUI, when you use effects. Everything else in other
 packs (models, textures, sounds, fonts) stacks with this one as usual.
 
 ## Installing

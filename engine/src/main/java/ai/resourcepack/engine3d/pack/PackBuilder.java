@@ -34,7 +34,7 @@ import java.util.zip.ZipOutputStream;
  * the pack higher in the client's list has its shader used: above this one,
  * models (or effects) stop drawing; below it, whatever that pack's shader did
  * is lost. Packs that draw meshes with core shaders (objmc and its forks)
- * replace the first four; RP Engine's shader objects and UI Engine replace
+ * replace the first four; RP Engine's shader objects and MC GUI replace
  * the text shaders.
  * Everything else (other packs' models, textures, sounds, fonts) stacks fine.
  */
