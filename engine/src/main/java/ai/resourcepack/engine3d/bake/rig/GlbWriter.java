@@ -7,6 +7,7 @@ import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import javax.imageio.stream.MemoryCacheImageOutputStream;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -212,7 +213,8 @@ public final class GlbWriter {
     }
 
     private static byte[] shrink(byte[] image, int max, float quality) throws IOException {
-        BufferedImage src = ImageIO.read(new ByteArrayInputStream(image));
+        // In memory, as the JPEG below is written: a plain stream would be buffered through a file in the temp folder.
+        BufferedImage src = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(image)));
         int w = src.getWidth(), h = src.getHeight();
         double k = Math.min(1, (double) max / Math.max(w, h));
         int nw = Math.max(1, (int) Math.round(w * k)), nh = Math.max(1, (int) Math.round(h * k));
