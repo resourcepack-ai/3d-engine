@@ -4,6 +4,7 @@ import ai.resourcepack.engine3d.bake.ObjCubed;
 import ai.resourcepack.engine3d.bake.rig.Rig;
 
 import javax.imageio.ImageIO;
+import javax.imageio.stream.MemoryCacheImageInputStream;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -67,7 +68,7 @@ public final class Atlas {
         java.util.Arrays.fill(data, (byte) 255);
 
         for (int k = 0; k < images.size(); k++) {
-            BufferedImage src = ImageIO.read(new ByteArrayInputStream(images.get(k)));
+            BufferedImage src = ImageIO.read(new MemoryCacheImageInputStream(new ByteArrayInputStream(images.get(k))));
             if (src == null) throw new IOException("A texture isn't a PNG or JPEG");
             int[] px = resample(src, cell, cell);
             double[] f = {1, 1, 1};
