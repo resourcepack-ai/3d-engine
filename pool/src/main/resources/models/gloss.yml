@@ -1,0 +1,4 @@
+# A ball's highlight and contact shadow, which stay put while the ball turns.
+offset: [0, -0.027975, 0]
+texture-width: 32
+hitbox: false

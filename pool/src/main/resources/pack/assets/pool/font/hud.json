@@ -1,0 +1,62 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "pool:font/spin.png",
+      "height": 20,
+      "ascent": 15,
+      "chars": [
+        "\ue100\ue101\ue102\ue103\ue104\ue105\ue106\ue107\ue108\ue109\ue10a",
+        "\ue10b\ue10c\ue10d\ue10e\ue10f\ue110\ue111\ue112\ue113\ue114\ue115",
+        "\ue116\ue117\ue118\ue119\ue11a\ue11b\ue11c\ue11d\ue11e\ue11f\ue120",
+        "\ue121\ue122\ue123\ue124\ue125\ue126\ue127\ue128\ue129\ue12a\ue12b",
+        "\ue12c\ue12d\ue12e\ue12f\ue130\ue131\ue132\ue133\ue134\ue135\ue136",
+        "\ue137\ue138\ue139\ue13a\ue13b\ue13c\ue13d\ue13e\ue13f\ue140\ue141",
+        "\ue142\ue143\ue144\ue145\ue146\ue147\ue148\ue149\ue14a\ue14b\ue14c",
+        "\ue14d\ue14e\ue14f\ue150\ue151\ue152\ue153\ue154\ue155\ue156\ue157",
+        "\ue158\ue159\ue15a\ue15b\ue15c\ue15d\ue15e\ue15f\ue160\ue161\ue162",
+        "\ue163\ue164\ue165\ue166\ue167\ue168\ue169\ue16a\ue16b\ue16c\ue16d",
+        "\ue16e\ue16f\ue170\ue171\ue172\ue173\ue174\ue175\ue176\ue177\ue178"
+      ]
+    },
+    {
+      "type": "bitmap",
+      "file": "pool:font/power.png",
+      "height": 12,
+      "ascent": 10,
+      "chars": [
+        "\ue200",
+        "\ue201",
+        "\ue202",
+        "\ue203",
+        "\ue204",
+        "\ue205",
+        "\ue206",
+        "\ue207",
+        "\ue208",
+        "\ue209",
+        "\ue20a",
+        "\ue20b",
+        "\ue20c",
+        "\ue20d",
+        "\ue20e",
+        "\ue20f",
+        "\ue210",
+        "\ue211",
+        "\ue212",
+        "\ue213",
+        "\ue214",
+        "\ue215",
+        "\ue216",
+        "\ue217",
+        "\ue218",
+        "\ue219",
+        "\ue21a",
+        "\ue21b",
+        "\ue21c",
+        "\ue21d",
+        "\ue21e"
+      ]
+    }
+  ]
+}

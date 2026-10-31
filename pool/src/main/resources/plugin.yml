@@ -1,0 +1,32 @@
+name: 3DPool
+version: ${version}
+main: ai.resourcepack.pool3d.Pool3D
+api-version: '1.21'
+depend: [3DEngine]
+description: A real 3D pool table with proper physics and 8-ball. Built on 3D Engine.
+website: https://resourcepack.ai
+commands:
+  pool:
+    description: Play pool; /pool join, leave, rack (create and remove for admins).
+    usage: /pool [join|leave|rack|create|remove]
+permissions:
+  pool3d.admin:
+    description: Setting up tables. A convenience parent, not a node anything checks.
+    default: op
+    children:
+      pool3d.create: true
+      pool3d.remove: true
+      pool3d.play: true
+      pool3d.shoot: true
+  pool3d.shoot:
+    description: /pool shoot, play a shot on a table from a command (for testing).
+    default: op
+  pool3d.create:
+    description: /pool create, put a table down in front of you.
+    default: op
+  pool3d.remove:
+    description: /pool remove, take away the nearest table.
+    default: op
+  pool3d.play:
+    description: Play at a table (right-click it, /pool join, leave, rack).
+    default: true

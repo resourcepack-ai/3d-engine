@@ -1,0 +1,4 @@
+# A 58 in cue, standing on its tip: the display turns it about the tip.
+texture-width: 1024
+triangles: 4000
+hitbox: false

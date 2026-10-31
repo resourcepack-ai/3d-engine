@@ -1,0 +1,4 @@
+# The ghost ball's outline, centred on the display.
+offset: [0, -0.001100, 0]
+texture-width: 16
+hitbox: false

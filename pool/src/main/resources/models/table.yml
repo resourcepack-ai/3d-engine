@@ -1,0 +1,4 @@
+# A 9 ft pool table, made by tools/make_models.py. Kept whole: no simplifying.
+texture-width: 2048
+triangles: 60000
+hitbox: false

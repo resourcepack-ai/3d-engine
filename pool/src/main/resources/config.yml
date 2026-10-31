@@ -1,0 +1,19 @@
+# 3D Pool
+#
+# Tables are placed with /pool create and kept in tables.yml.
+
+# Draw the aiming guide (the line to the ghost ball, and where the object ball
+# goes). Off by default, as in Shooterspool; F toggles it at the table.
+aim-guide: false
+
+# The stroke: hold S and move the mouse back and forward. How far the cue moves
+# for each degree the mouse turns the view, in metres, and a multiplier on how
+# fast the cue ball leaves the tip. Raise sensitivity if a hard break needs a
+# longer mouse swing than you have room for.
+stroke:
+  sensitivity: 0.012
+  power: 1.0
+
+# Hold W and move the mouse: how far the tip moves across the cue ball for each
+# degree, in ball radii.
+spin-sensitivity: 0.012

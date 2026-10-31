@@ -1,0 +1,5 @@
+# Pool ball 5: 2 1/4 in, centred on the display so it turns about its middle.
+offset: [0, -0.028575, 0]
+texture-width: 512
+triangles: 4000
+hitbox: false

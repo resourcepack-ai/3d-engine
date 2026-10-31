@@ -1,0 +1,61 @@
+{
+  "ball": {
+    "subtitle": "subtitles.pool.ball",
+    "sounds": [
+      {
+        "name": "pool:ball0"
+      },
+      {
+        "name": "pool:ball1"
+      },
+      {
+        "name": "pool:ball2"
+      },
+      {
+        "name": "pool:ball3"
+      }
+    ]
+  },
+  "cushion": {
+    "subtitle": "subtitles.pool.cushion",
+    "sounds": [
+      {
+        "name": "pool:cushion0"
+      },
+      {
+        "name": "pool:cushion1"
+      },
+      {
+        "name": "pool:cushion2"
+      }
+    ]
+  },
+  "pocket": {
+    "subtitle": "subtitles.pool.pocket",
+    "sounds": [
+      {
+        "name": "pool:pocket0"
+      },
+      {
+        "name": "pool:pocket1"
+      },
+      {
+        "name": "pool:pocket2"
+      }
+    ]
+  },
+  "cue": {
+    "subtitle": "subtitles.pool.cue",
+    "sounds": [
+      {
+        "name": "pool:cue0"
+      },
+      {
+        "name": "pool:cue1"
+      },
+      {
+        "name": "pool:cue2"
+      }
+    ]
+  }
+}

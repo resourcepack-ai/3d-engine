@@ -1,0 +1,149 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+version = '0.1.0'
+base { archivesName = '3DPool' }
+
+// 3D Pool builds two ways. Beside 3D Engine's source, as that build's ':pets'
+// project, it compiles against the engine project and gets the Java and
+// Spigot setup from the parent build. On its own, it sets those up itself and
+// compiles against a 3D Engine jar.
+def standalone = rootProject == project
+
+repositories {
+    // ai.resourcepack:common, our own shared plugin library. Exclusive: the
+    // ai.resourcepack group is looked for here and nowhere else, so a
+    // look-alike published to Central or any repository above cannot stand in
+    // for it. (With plugin-common's source in the checkout, it is built from
+    // that instead; see settings.gradle.)
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://repo.resourcepack.ai' }
+        }
+        filter {
+            includeGroup 'ai.resourcepack'
+        }
+    }
+}
+
+dependencies {
+    // The small library our plugins shade in (the update check), relocated
+    // below so it never meets the engine's copy.
+    implementation 'ai.resourcepack:common:0.8.0'
+}
+
+if (!standalone) {
+    dependencies {
+        compileOnly project(':engine')
+    }
+} else {
+    group = 'ai.resourcepack'
+
+    // Spigot or Paper on Minecraft 26.3, which runs on Java 21.
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 21
+        options.encoding = 'UTF-8'
+    }
+
+    repositories {
+        mavenCentral()
+        maven { url = 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+    }
+
+    // 3D Engine, compileOnly: it is a plugin the server already has. The jar
+    // to compile against is the first of:
+    //   1. ENGINE_JAR, the path to any 3D Engine jar;
+    //   2. an engine built beside this project, in ../3d-engine/engine/build/libs
+    //      (-PengineDir=<dir> looks somewhere else);
+    //   3. the released 3D Engine this addon needs, downloaded once from
+    //      cdn.resourcepack.ai into .gradle/3d-engine/ and checked against its SHA-256.
+    // The released one is ENGINE_VERSION, the oldest engine 3D Pool runs on:
+    // compiling against it keeps a newer call out.
+    def ENGINE_VERSION = '0.1.6'
+    def ENGINE_SHA256 = 'f88654353ff47a031dfd6b578589181de68d78f3e72d75d55e5a8159b211e4d8'
+    def ENGINE_URL = "https://cdn.resourcepack.ai/3DEngine-${ENGINE_VERSION}.jar"
+
+    def engineEnv = System.getenv('ENGINE_JAR')
+    def engineDir = file(findProperty('engineDir') ?: '../3d-engine/engine/build/libs')
+    def engineBuilt = fileTree(dir: engineDir, include: '3DEngine-*.jar',
+            excludes: ['*-plain.jar', '*-sources.jar', '*-javadoc.jar'])
+    def engineDownloaded = file(".gradle/3d-engine/3DEngine-${ENGINE_VERSION}.jar")
+
+    def downloadEngine = tasks.register('downloadEngine') {
+        description = "Downloads 3D Engine ${ENGINE_VERSION} to compile against."
+        outputs.file(engineDownloaded)
+        onlyIf { !engineDownloaded.isFile() }
+        doLast {
+            if (gradle.startParameter.offline) {
+                throw new GradleException("3D Engine ${ENGINE_VERSION} is not downloaded yet and Gradle is offline. " +
+                        "Run once online, or set ENGINE_JAR to a 3D Engine jar.")
+            }
+            def part = file("${engineDownloaded}.part")
+            part.parentFile.mkdirs()
+            logger.lifecycle("Downloading ${ENGINE_URL}")
+            URI.create(ENGINE_URL).toURL().withInputStream { input -> part.withOutputStream { it << input } }
+            def sha = java.security.MessageDigest.getInstance('SHA-256').digest(part.bytes).encodeHex().toString()
+            if (sha != ENGINE_SHA256) {
+                part.delete()
+                throw new GradleException("${ENGINE_URL} has SHA-256 ${sha}, expected ${ENGINE_SHA256}. Not using it.")
+            }
+            java.nio.file.Files.move(part.toPath(), engineDownloaded.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
+    def engineJar = engineEnv
+            ? files(engineEnv)
+            : !engineBuilt.files.isEmpty()
+                ? engineBuilt
+                : files(engineDownloaded).builtBy(downloadEngine)
+
+    dependencies {
+        compileOnly 'org.spigotmc:spigot-api:26.3-R0.1-SNAPSHOT'
+        compileOnly 'org.jetbrains:annotations:24.1.0'
+        compileOnly engineJar
+    }
+
+    tasks.register('checkEngineJar') {
+        doFirst {
+            if (engineEnv && !file(engineEnv).isFile()) {
+                throw new GradleException("ENGINE_JAR is ${engineEnv}, and there is no file there.")
+            }
+        }
+    }
+    compileJava.dependsOn checkEngineJar
+
+    processResources {
+        inputs.property('version', project.version)
+        filesMatching('plugin.yml') {
+            expand(version: project.version)
+        }
+    }
+}
+
+// 3DPool-<version>.jar: the plugin, with the library shaded in.
+shadowJar {
+    archiveClassifier.set('')
+    relocate 'ai.resourcepack.common', 'ai.resourcepack.pool3d.libs.common'
+}
+
+// Only the shaded jar: the plain one would be the same classes without the library.
+jar {
+    enabled = false
+}
+
+build {
+    dependsOn shadowJar
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+}

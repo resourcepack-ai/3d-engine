@@ -8,7 +8,7 @@ rootProject.name = '3d-engine'
 // The engine, and any addon kept beside it in this build. Each is included
 // only when its directory is here, so the engine builds on its own.
 include 'engine'
-['pets', 'flamethrower'].each { addon ->
+['pets', 'flamethrower', 'pool'].each { addon ->
     if (file(addon).isDirectory()) {
         include addon
     }
