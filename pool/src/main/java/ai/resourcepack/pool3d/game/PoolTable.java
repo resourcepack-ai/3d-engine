@@ -147,14 +147,68 @@ public final class PoolTable {
 
     // ---- frames ---------------------------------------------------------------------------
 
-    /** A point in the table's frame, {@code h} above the floor, in the world. */
+    /**
+     * A point in the table's frame, {@code h} above the floor, in the world,
+     * where it is drawn: turned by {@link #twist} while the still camera is up.
+     */
     Location at(double x, double y, double h) {
+        Location l = raw(x, y, h);
+        if (twist == 0) return l;
+        double dx = l.getX() - twistX, dz = l.getZ() - twistZ;
+        l.setX(twistX + dx * twistCos - dz * twistSin);
+        l.setZ(twistZ + dx * twistSin + dz * twistCos);
+        return l;
+    }
+
+    /** A point in the table's frame in the world, as it really is: for the player, the seat and the camera. */
+    Location raw(double x, double y, double h) {
         return alongZ ? new Location(world, cx + y, cy + h, cz + x) : new Location(world, cx + x, cy + h, cz - y);
     }
 
-    /** A direction in the table's frame (z up) as a world vector. */
+    /** A direction in the table's frame (z up) as a world vector, as it is drawn. */
     Vector3f dir(double x, double y, double z) {
+        Vector3f v = rawDir(x, y, z);
+        if (twist == 0) return v;
+        float wx = v.x, wz = v.z;
+        v.x = (float) (wx * twistCos - wz * twistSin);
+        v.z = (float) (wx * twistSin + wz * twistCos);
+        return v;
+    }
+
+    private Vector3f rawDir(double x, double y, double z) {
         return alongZ ? new Vector3f((float) y, (float) z, (float) x) : new Vector3f((float) x, (float) z, (float) -y);
+    }
+
+    /**
+     * The still camera (see {@link StandIn}) can face only 256 ways round,
+     * so it looks up to 0.7 degrees off the shooter's own view: everything
+     * the table draws is turned with it, by {@code twist} radians of yaw
+     * about where the camera is ({@code twistX}, {@code twistZ}), so the
+     * table, the balls and the cue stay exactly where they were on screen.
+     */
+    private double twist, twistX, twistZ, twistCos = 1, twistSin;
+    /** The twist the balls and the table were last drawn with. */
+    private double drawnTwist;
+
+    private void twist(double[] t) {
+        twist = t == null ? 0 : Math.toRadians(t[0]);
+        if (t != null) {
+            twistX = t[1];
+            twistZ = t[2];
+        }
+        twistCos = Math.cos(twist);
+        twistSin = Math.sin(twist);
+        if (twist == drawnTwist) return;
+        drawnTwist = twist;
+        if (body != null && body.valid()) body.teleport(bodyAt());
+        for (BallView v : views.values()) v.lastX = Double.NaN;
+    }
+
+    /** Where the table's model stands, as drawn. */
+    private Location bodyAt() {
+        Location at = at(0, 0, 0);
+        at.setYaw((float) ((alongZ ? 90 : 0) + Math.toDegrees(twist)));
+        return at;
     }
 
     /** World (X, Z) in the table's frame. */
@@ -196,9 +250,8 @@ public final class PoolTable {
     /** (Re)makes whatever is missing: called when the engine is ready and after a reload. */
     void spawn() {
         if (body == null || !body.valid()) {
-            Location at = centre();
-            at.setYaw(alongZ ? 90 : 0);
-            body = engine.spawn(Assets.TABLE, at);
+            body = engine.spawn(Assets.TABLE, bodyAt());
+            body.display().setTeleportDuration(0);
         }
         for (Ball b : sim.balls) if (b.onTable()) view(b);
         if (bar == null) {
@@ -261,6 +314,11 @@ public final class PoolTable {
             BallView v = views.get(b.number);
             if (b.onTable()) {
                 if (v == null) v = view(b);
+                int glide = state == State.AIM ? 0 : 1;
+                if (v.ball.display().getTeleportDuration() != glide) {
+                    v.ball.display().setTeleportDuration(glide);
+                    v.gloss.display().setTeleportDuration(glide);
+                }
                 if (b.x != v.lastX || b.y != v.lastY || v.lastH != BED + R) {
                     Location at = at(b.x, b.y, BED + R);
                     v.ball.teleport(at);
@@ -333,7 +391,7 @@ public final class PoolTable {
         Location at = at(c.x, c.y, BED + R);
         if (cue == null || !cue.valid()) {
             cue = engine.spawn(Assets.CUE, at);
-            cue.display().setTeleportDuration(1);
+            cue.display().setTeleportDuration(0);
         } else if (cue.display().getLocation().distanceSquared(at) > 1e-8) cue.teleport(at);
         Display d = cue.display();
         boolean changed = billboard(d, Display.Billboard.FIXED);
@@ -373,7 +431,7 @@ public final class PoolTable {
         Location at = at(c.x, c.y, BED + R);
         if (cue == null || !cue.valid()) {
             cue = engine.spawn(Assets.CUE, at);
-            cue.display().setTeleportDuration(1);
+            cue.display().setTeleportDuration(0);
         } else if (cue.display().getLocation().distanceSquared(at) > 1e-8) cue.teleport(at);
         Display d = cue.display();
         boolean changed = billboard(d, Display.Billboard.VERTICAL);
@@ -623,6 +681,7 @@ public final class PoolTable {
         if (standIn != null && standIn.viewer().getUniqueId().equals(u)) {
             standIn.remove();
             standIn = null;
+            twist(null);
             mode = Mode.AIM;
         }
         ShotCamera c = cameras.remove(u);
@@ -642,8 +701,8 @@ public final class PoolTable {
             if (ax - Math.abs(x) < ay - Math.abs(y)) x = Math.copySign(ax, x == 0 ? 1 : x);
             else y = Math.copySign(ay, y == 0 ? 1 : y);
         }
-        Location l = at(x, y, 0);
-        Location c = at(0, 0, 0);
+        Location l = raw(x, y, 0);
+        Location c = raw(0, 0, 0);
         l.setDirection(c.toVector().subtract(l.toVector()));
         return l;
     }
@@ -659,7 +718,7 @@ public final class PoolTable {
 
     /** The world yaw (degrees) that looks along {@code angle} in the table's frame. */
     float yawOf(double angle) {
-        Vector3f w = dir(Math.cos(angle), Math.sin(angle), 0);
+        Vector3f w = rawDir(Math.cos(angle), Math.sin(angle), 0);
         return (float) Math.toDegrees(Math.atan2(-w.x, w.z));
     }
 
@@ -673,7 +732,7 @@ public final class PoolTable {
      */
     private Location pivotEye() {
         double below = Math.atan(2 * BALL_BELOW * Math.tan(Math.toRadians(35 * zoom)));
-        return at(pivotX, pivotY, BED + R + distance * Math.tan(below));
+        return raw(pivotX, pivotY, BED + R + distance * Math.tan(below));
     }
 
     /**
@@ -692,7 +751,7 @@ public final class PoolTable {
 
     /** The overview's eyes: on the cloth in the middle, the camera {@link #OVERVIEW} straight up from them. */
     private Location overviewEye() {
-        return at(0, 0, BED + 0.01);
+        return raw(0, 0, BED + 0.01);
     }
 
     /** Moves {@code cam} to {@code eye}: quickly when it is near, gliding when it has far to go. */
@@ -1056,7 +1115,7 @@ public final class PoolTable {
         heldPitch = lastPitch = view.getPitch();
         aim = angleFromYaw(heldYaw);
         gap = REST;
-        if (standIn(p) != null) standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE);
+        if (standIn(p) != null) twist(standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE));
     }
 
     /** The shooter's stand-in, where the server can make one. */
@@ -1076,6 +1135,7 @@ public final class PoolTable {
         gap = REST;
         testHold = 0;
         if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
+        twist(null);
     }
 
     /** Whether the camera is still held after the shot, until S comes up. */
@@ -1086,6 +1146,7 @@ public final class PoolTable {
         if (p != null && p.getCurrentInput().isBackward() && standIn != null && standIn.shown()) return;
         shotHold = false;
         if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
+        twist(null);
     }
 
     private float overviewYaw, overviewPitch;
@@ -1148,20 +1209,14 @@ public final class PoolTable {
 
     private void drawCueFollow() {
         if (cue == null || !cue.valid()) return;
-        if (cue.display().getBillboard() == Display.Billboard.VERTICAL) {
-            // Through the ball, on the same line: the facing cue only slides along it.
-            Transformation t = cue.display().getTransformation();
-            Vector3f along = new Quaternionf(t.getLeftRotation()).transform(new Vector3f(0, 1, 0));
-            Display d = cue.display();
-            d.setInterpolationDelay(0);
-            d.setInterpolationDuration(2);
-            d.setTransformation(new Transformation(new Vector3f(t.getTranslation()).sub(along.mul(0.06f)), t.getLeftRotation(),
-                    t.getScale(), t.getRightRotation()));
-            return;
-        }
-        double dx = Math.cos(aim), dy = Math.sin(aim);
-        Vector3f push = dir(dx * 0.06, dy * 0.06, 0);
-        cue.teleport(cue.display().getLocation().add(push.x, 0, push.z));
+        // Through the ball, on the same line: the cue only slides along it.
+        Transformation t = cue.display().getTransformation();
+        Vector3f along = new Quaternionf(t.getLeftRotation()).transform(new Vector3f(0, 1, 0));
+        Display d = cue.display();
+        d.setInterpolationDelay(0);
+        d.setInterpolationDuration(2);
+        d.setTransformation(new Transformation(new Vector3f(t.getTranslation()).sub(along.mul(0.06f)), t.getLeftRotation(),
+                t.getScale(), t.getRightRotation()));
     }
 
     private void sounds(List<Simulation.Event> events) {

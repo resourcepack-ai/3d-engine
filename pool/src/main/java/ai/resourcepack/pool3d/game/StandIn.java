@@ -229,11 +229,13 @@ final class StandIn {
      * put exactly where the shooter's was, so the turn is all that differs:
      * the whole picture slides that hair sideways and everything in it, the
      * cue on the line of the shot and the ball it is aimed at, stays lined up.
+     * What it returns lets the table take that slide out too: the turn
+     * (degrees of yaw) and the point it is about (world x, z), or null.
      */
-    void show(Location eye, float yaw, float pitch, double scale, double cameraDistance) {
+    double[] show(Location eye, float yaw, float pitch, double scale, double cameraDistance) {
         if (shown) hide(null);
         prepare(eye, scale, cameraDistance);
-        if (!spawned) return;
+        if (!spawned) return null;
         try {
             Object handle = getHandle.invoke(viewer);
             List<Object> out = new ArrayList<>();
@@ -255,8 +257,10 @@ final class StandIn {
             out.add(cameraNew.newInstance(marker));
             bundle(handle, out);
             shown = true;
+            return new double[]{Math.IEEEremainder(faced - yaw, 360), eye.getX() - d * want[0], eye.getZ() - d * want[2]};
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
+            return null;
         }
     }
 
