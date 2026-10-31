@@ -43,18 +43,21 @@ public final class Tables implements Listener {
     private final Map<String, PoolTable> tables = new LinkedHashMap<>();
     private final File file;
     boolean guide;
-    /** Ticks holding S takes to draw the cue all the way back. */
-    int drawTicks;
+    /** Metres of cue travel per degree the mouse turns the view during a stroke. */
+    double strokeScale;
     /** Multiplies how fast the cue ball leaves the tip. */
     double strokePower;
+    /** Ball radii the tip moves per degree, holding W. */
+    double spinScale;
 
     public Tables(JavaPlugin plugin, Engine3D engine) {
         this.plugin = plugin;
         this.engine = engine;
         this.file = new File(plugin.getDataFolder(), "tables.yml");
         this.guide = plugin.getConfig().getBoolean("aim-guide", false);
-        this.drawTicks = Math.max(1, (int) Math.round(plugin.getConfig().getDouble("stroke.draw-seconds", 1.5) * 20));
+        this.strokeScale = plugin.getConfig().getDouble("stroke.sensitivity", 0.012);
         this.strokePower = plugin.getConfig().getDouble("stroke.power", 1.0);
+        this.spinScale = plugin.getConfig().getDouble("spin-sensitivity", 0.012);
     }
 
     // ---- placing ------------------------------------------------------------------------------
@@ -178,7 +181,7 @@ public final class Tables implements Listener {
         inv.setItem(slot, Assets.cue());
         inv.setHeldItemSlot(slot);
         t.join(p);
-        say(p, "Mouse aims and tilts. Hold S to draw the cue back and let go to hit: the further back, the harder. Hold W for spin (A/D side, space top, sprint screw), Q centres it. A/D fine aim, scroll zooms, space looks down on the table, sneak gets up, F toggles the guide line.");
+        say(p, "Mouse aims and tilts. Hold S and move the mouse back and forward to cue. Hold W and move the mouse for spin, Q centres it. A/D fine aim, scroll zooms, space looks down on the table, sneak gets up, F toggles the guide line.");
         return null;
     }
 

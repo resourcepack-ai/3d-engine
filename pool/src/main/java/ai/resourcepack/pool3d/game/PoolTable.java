@@ -56,11 +56,14 @@ public final class PoolTable {
      * The shot camera, after Shooterspool's own defaults (its player
      * profile: {@code initialHeadToBallDistance} 1.2, {@code fov} 30): a
      * long lens close behind the cue ball, so the cue runs long up the middle
-     * of the screen and the table looks flat: 30 degrees of Minecraft's 70,
-     * 1.2 m behind. The wheel moves the eye in and out.
+     * of the screen and the table looks flat. The lens is half the player's
+     * own view (35 degrees at Minecraft's 70), the narrowest the still stroke
+     * camera ({@link StandIn}) can match, and the eye is brought in to
+     * {@link #DISTANCE} so the cue ball is the size it is at 1.2 m through
+     * 30 degrees. The wheel moves the eye in and out.
      */
-    static final double ZOOM = 30.0 / 70;
-    static final double DISTANCE = 1.2;
+    static final double ZOOM = 0.5;
+    static final double DISTANCE = 1.2 * Math.tan(Math.toRadians(15)) / Math.tan(Math.toRadians(17.5));
     static final double DISTANCE_MIN = 0.4, DISTANCE_MAX = 2.0;
     /** The cue ball sits this share of the screen's height below its middle, whatever the tilt. */
     static final double BALL_BELOW = 0.116;
@@ -74,7 +77,7 @@ public final class PoolTable {
     enum State {IDLE, PLACE, AIM, STRIKE, ROLLING, SETTLE, OVER}
 
     /** What the mouse is doing while S or W is held: nothing special, the stroke, or moving the tip. */
-    enum Mode {AIM, STROKE, SEND, SPIN}
+    enum Mode {AIM, STROKE, SPIN}
 
     final Tables tables;
     final Engine3D engine;
@@ -111,13 +114,15 @@ public final class PoolTable {
     Mode mode = Mode.AIM;
     final double zoom = ZOOM;
     double distance = DISTANCE;
+    /** The still camera the shooter looks through while S or W is held, where the server can manage it. */
+    private StandIn standIn;
+    private float lastYaw, lastPitch;
     boolean overview;
     private boolean jumpHeld;
-    /** How far the tip is behind the ball during a stroke. */
-    private double gap = REST;
-    /** Ticks S has been held, drawing the cue back; and how far the cue goes forward each tick once it is let go. */
-    private int drawTicks;
-    private double sendStep;
+    /** The view when S or W went down, given back when it comes up. */
+    private float heldYaw, heldPitch;
+    /** How far the tip is behind the ball during a stroke, and how far it moved in the last tick. */
+    private double gap = REST, gapSpeed;
     private int nudgeTicks;
 
     private static final class BallView {
@@ -335,13 +340,14 @@ public final class PoolTable {
         Vector3f axis = dir(ax, ay, az).normalize();
         Vector3f tip = dir(px - c.x + ax * gap, py - c.y + ay * gap, pz - (BED + R) + az * gap);
         transform(d, new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), axis),
-                new Vector3f(1, 1, 1), new Quaternionf()), changed ? 0 : 1);
+                new Vector3f(1, 1, 1), new Quaternionf()), changed ? 0 : mode == Mode.STROKE ? 2 : 1);
     }
 
     /** Whether the shooter is looking down the cue through the orbit camera. */
     private boolean facingCamera() {
         Player p = shooter();
-        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE;
+        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE
+                && mode == Mode.AIM && !(standIn != null && standIn.shown());
     }
 
     /** Turns a display to face the camera or not, saying whether it changed: a change is drawn at once, not eased. */
@@ -380,7 +386,7 @@ public final class PoolTable {
         // reaches the server unevenly (none in one tick, two in the next):
         // easing each step over two ticks smooths that without much delay.
         transform(d, new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), along),
-                new Vector3f(1, 1, 1), new Quaternionf()), changed ? 0 : 1);
+                new Vector3f(1, 1, 1), new Quaternionf()), changed ? 0 : mode == Mode.STROKE ? 2 : 1);
     }
 
     /**
@@ -604,6 +610,7 @@ public final class PoolTable {
         return cameras.computeIfAbsent(p.getUniqueId(), u -> {
             // The orbit is the third-person view, which only the player can turn on.
             p.sendTitle("", ChatColor.WHITE + "Press F5" + ChatColor.GRAY + " for the shot camera", 5, 60, 15);
+            SelfClickFilter.install(p);
             return new ShotCamera(p);
         });
     }
@@ -613,12 +620,15 @@ public final class PoolTable {
     }
 
     private void closeCamera(UUID u) {
-        if (mode != Mode.AIM && shooter() != null && shooter().getUniqueId().equals(u)) {
+        if (standIn != null && standIn.viewer().getUniqueId().equals(u)) {
+            standIn.remove();
+            standIn = null;
             mode = Mode.AIM;
         }
         ShotCamera c = cameras.remove(u);
         if (c != null) {
             c.close(standSpot(c.eye()));
+            SelfClickFilter.remove(c.player);
         }
     }
 
@@ -818,6 +828,7 @@ public final class PoolTable {
         stateTicks++;
         for (ShotCamera c : cameras.values()) c.refresh();
         Player shooter = shooter();
+        if (shotHold) afterShot(shooter);
         switch (state) {
             case PLACE -> placing(shooter);
             case AIM -> aiming(shooter);
@@ -894,7 +905,7 @@ public final class PoolTable {
      * the whole table, and the wheel zooms.
      */
     private void aiming(Player p) {
-        if (p == null) return;
+        if (p == null || shotHold) return;
         if (!holding(p)) {
             if (mode != Mode.AIM) endHold(p);
             hideCue();
@@ -933,50 +944,50 @@ public final class PoolTable {
                 jumpHeld = in.isJump();
             }
             case STROKE -> {
-                // The mouse still aims: the camera is the player's own, so
-                // nothing the server does can make it move.
-                aim = angleFromYaw(yaw);
-                if (in.isBackward() || testHold-- > 0) {
-                    drawTicks++;
-                    gap = Math.min(BRIDGE, REST + (BRIDGE - REST) * drawTicks / (double) tables.drawTicks);
-                    break;
-                }
-                // S came up: the cue goes through the ball as hard as it was
-                // drawn back, the soft end finer than the hard.
-                double drawn = (gap - REST) / (BRIDGE - REST);
-                if (drawn < 0.02) {
+                if (!in.isBackward() && testHold-- <= 0) {
                     endHold(p);
                     break;
                 }
-                shotSpeed = Math.min(11, (0.2 + 9.3 * Math.pow(drawn, 1.6)) * tables.strokePower);
-                power = Math.min(1, shotSpeed / 9.4);
-                // A cue weighs about three balls, and the tip gives back most
-                // of the blow: the cue goes at the ball's speed over 1.37.
-                sendStep = shotSpeed / 1.37 * 0.05;
-                mode = Mode.SEND;
-            }
-            case SEND -> {
-                gap -= sendStep;
-                if (gap <= 0) {
+                // The mouse turned the view this far since the last tick; it is
+                // turned straight back, so the camera holds still.
+                double moved = held(p, yaw, pitch)[1];
+                double g = Math.min(BRIDGE, gap + moved * tables.strokeScale);
+                if (g <= 0 && g < gap) {
+                    // The tip has reached the ball, going (gap - g) in this tick.
+                    double cueSpeed = (gap - g) / 0.05;
+                    // A cue weighs about three balls, and the tip gives back most of the blow.
+                    shotSpeed = Math.min(11, cueSpeed * 1.37 * tables.strokePower);
+                    power = Math.min(1, shotSpeed / 9.4);
+                    if (shotSpeed < 0.04) {
+                        endHold(p);
+                        break;
+                    }
+                    // The mouse is still going forward, following through: the
+                    // camera stays still until S comes up.
                     mode = Mode.AIM;
                     gap = REST;
                     testHold = 0;
+                    shotHold = standIn != null && standIn.shown();
                     strikeBack = 0;
                     setState(State.STRIKE);
                     stateTicks = 2;
                     striking();
                     return;
                 }
+                // The speed is smoothed: the mouse reaches the server unevenly,
+                // and leading by a raw tick's move would twitch at rest.
+                gapSpeed = gapSpeed * 0.5 + (Math.max(0, g) - gap) * 0.5;
+                if (Math.abs(gapSpeed) < 0.002) gapSpeed = 0;
+                gap = Math.max(0, g);
             }
             case SPIN -> {
                 if (!in.isForward()) {
                     endHold(p);
                     break;
                 }
-                aim = angleFromYaw(yaw);
-                // A and D move the tip across, space up (top spin) and sprint down (screw).
-                double s = side + ((in.isRight() ? 1 : 0) - (in.isLeft() ? 1 : 0)) * 0.025;
-                double h = height + ((in.isJump() ? 1 : 0) - (in.isSprint() ? 1 : 0)) * 0.025;
+                double[] moved = held(p, yaw, pitch);
+                double s = side + moved[0] * tables.spinScale;
+                double h = height - moved[1] * tables.spinScale;
                 double len = Math.hypot(s, h);
                 if (len > 0.5) {
                     s *= 0.5 / len;
@@ -984,7 +995,6 @@ public final class PoolTable {
                 }
                 side = s;
                 height = h;
-                jumpHeld = in.isJump();
             }
         }
 
@@ -997,32 +1007,85 @@ public final class PoolTable {
         } else {
             cam.lens(distance, zoom);
             glide(cam, pivotEye());
+            // Ready for the stroke before it comes.
+            if (mode == Mode.AIM && standIn(p) != null) {
+                standIn.prepare(pivotEye(), ShotCamera.SCALE, distance / ShotCamera.SCALE);
+                standIn.face(pivotEye(), yaw, ShotCamera.SCALE, distance / ShotCamera.SCALE);
+            }
         }
         // Looked at from under the cue's line, the cue would hang across the
         // view from above: it is put away until the camera is over it again.
-        double camUp = Math.sin(Math.toRadians(pitch)) * distance
+        double camUp = Math.sin(Math.toRadians(mode == Mode.AIM ? pitch : heldPitch)) * distance
                 + (pivotEye().getY() - (cy + BED + R));
         double cueUp = Math.tan(elevation(c, Math.cos(aim), Math.sin(aim))) * distance;
-        boolean stroking = mode == Mode.STROKE || mode == Mode.SEND;
-        if (stroking || overview || camUp > cueUp + 0.02) drawCue(stroking ? Math.max(0, gap) : REST);
+        // Stroking, the cue is drawn a tick ahead of where the mouse last put
+        // it, at the speed it is going: the mouse takes a tick or two to reach
+        // the server, and this is most of that back.
+        double shown = mode == Mode.STROKE ? Math.max(0, Math.min(BRIDGE, gap + gapSpeed)) : REST;
+        if (mode == Mode.STROKE || overview || camUp > cueUp + 0.02) drawCue(shown);
         else hideCue();
-        if (tables.guide && !stroking && !overview) drawGuide();
+        if (tables.guide && mode != Mode.STROKE && !overview) drawGuide();
         else hideGuide();
     }
 
-    /** S or W went down: drawing the cue back, or moving the tip. */
-    private void startHold(Player p, Mode m) {
-        mode = m;
-        drawTicks = 0;
-        aim = angleFromYaw(p.getLocation().getYaw());
-        gap = REST;
+    /**
+     * While S or W is held the mouse works the cue, and the view must not
+     * move: what it turned since the last tick (yaw, pitch, degrees). With
+     * the stand-in up the camera is not the player's, so their view is free
+     * to turn; without it, the view is put back where it was held, which
+     * shakes a little.
+     */
+    private double[] held(Player p, float yaw, float pitch) {
+        if (standIn != null && standIn.shown()) {
+            double dy = Math.IEEEremainder(yaw - lastYaw, 360), dp = pitch - lastPitch;
+            lastYaw = yaw;
+            lastPitch = pitch;
+            return new double[]{dy, dp};
+        }
+        double dy = Math.IEEEremainder(yaw - heldYaw, 360), dp = pitch - heldPitch;
+        if (dy != 0 || dp != 0) p.setRotation(heldYaw, heldPitch);
+        return new double[]{dy, dp};
     }
 
-    /** S or W came up without a shot: the cue goes back to rest. */
+    /** S or W went down: the camera holds still and the mouse works the cue. */
+    private void startHold(Player p, Mode m) {
+        mode = m;
+        gapSpeed = 0;
+        Location view = p.getLocation();
+        heldYaw = lastYaw = view.getYaw();
+        heldPitch = lastPitch = view.getPitch();
+        aim = angleFromYaw(heldYaw);
+        gap = REST;
+        if (standIn(p) != null) standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE);
+    }
+
+    /** The shooter's stand-in, where the server can make one. */
+    private StandIn standIn(Player p) {
+        if (!StandIn.available(tables.plugin.getLogger())) return null;
+        if (standIn != null && standIn.viewer() != p) {
+            standIn.remove();
+            standIn = null;
+        }
+        if (standIn == null) standIn = new StandIn(p);
+        return standIn;
+    }
+
+    /** S or W came up (or the shot went): the cue goes back to rest, the camera back to the player as it was. */
     private void endHold(Player p) {
         mode = Mode.AIM;
         gap = REST;
         testHold = 0;
+        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
+    }
+
+    /** Whether the camera is still held after the shot, until S comes up. */
+    private boolean shotHold;
+
+    /** S came up after the shot (or the camera went): the camera back to the player as it was. */
+    private void afterShot(Player p) {
+        if (p != null && p.getCurrentInput().isBackward() && standIn != null && standIn.shown()) return;
+        shotHold = false;
+        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
     }
 
     private float overviewYaw, overviewPitch;
@@ -1189,7 +1252,7 @@ public final class PoolTable {
                 case AIM -> {
                     if (!holding(p)) Hud.actionBar(p, ChatColor.GRAY + "Hold your cue to shoot");
                     else if (standing.contains(p.getUniqueId())) Hud.actionBar(p, ChatColor.GRAY + "Right-click to take your shot");
-                    else Hud.shot(p, side, height, mode.name(), overview, (gap - REST) / (BRIDGE - REST));
+                    else Hud.shot(p, side, height, mode.name(), overview);
                 }
                 default -> {
                 }

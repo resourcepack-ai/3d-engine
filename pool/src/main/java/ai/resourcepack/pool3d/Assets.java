@@ -73,8 +73,8 @@ public final class Assets {
                 + "minecraft:max_stack_size=1]");
         ItemMeta meta = item.getItemMeta();
         meta.setItemName(ChatColor.WHITE + "Cue");
-        meta.setLore(List.of(ChatColor.GRAY + "Mouse aims  ·  hold S to draw back, let go to hit",
-                ChatColor.GRAY + "Hold W for spin: A/D, space, sprint  ·  Q: centre",
+        meta.setLore(List.of(ChatColor.GRAY + "Mouse aims  ·  hold S and move the mouse to cue",
+                ChatColor.GRAY + "Hold W and move the mouse for spin  ·  Q: centre",
                 ChatColor.GRAY + "A/D fine aim  ·  scroll zoom  ·  space: whole table",
                 ChatColor.GRAY + "Sneak to get up  ·  F: guide line"));
         meta.getPersistentDataContainer().set(IS_CUE, PersistentDataType.BYTE, (byte) 1);

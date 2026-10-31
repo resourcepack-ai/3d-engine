@@ -23,10 +23,10 @@ final class Hud {
 
     /**
      * The cue ball with the tip's spot on it, what the spin is, and the keys
-     * for what is being done. Drawing back, how far back the cue is, which
-     * is how hard it will go.
+     * for whatever the mouse is doing. There is no power bar: as in
+     * Shooterspool, the power is how fast the cue is pushed.
      */
-    static void shot(Player p, double side, double height, String mode, boolean overview, double drawn) {
+    static void shot(Player p, double side, double height, String mode, boolean overview) {
         int col = (int) Math.round(side * 10) + SPIN / 2;
         int row = SPIN / 2 - (int) Math.round(height * 10);
         col = Math.max(0, Math.min(SPIN - 1, col));
@@ -34,10 +34,10 @@ final class Hud {
         TextComponent ball = new TextComponent(String.valueOf((char) (0xE100 + row * SPIN + col)));
         ball.setFont("pool:hud");
         String keys = switch (mode) {
-            case "STROKE", "SEND" -> "§f" + Math.round(Math.max(0, drawn) * 100) + "% §7· let go of §fS§7 to hit · left-click to stop";
-            case "SPIN" -> "§fA/D§7 side · §fspace§7 top · §fsprint§7 screw §7· let go of §fW§7 to keep it";
+            case "STROKE" -> "§fmouse back, then forward through the ball §7· let go of S to stop";
+            case "SPIN" -> "§fmouse moves the tip §7· let go of W to keep it";
             default -> overview ? "§7space: back to the shot"
-                    : "§7hold §fS§7 to draw back, let go to hit · hold §fW§7 for spin · §fA/D§7 fine aim · §fscroll§7 zoom · §fspace§7 table · §fF5§7 camera";
+                    : "§7hold §fS§7 to cue · hold §fW§7 for spin · §fA/D§7 fine aim · §fscroll§7 zoom · §fspace§7 table · §fF5§7 camera";
         };
         BaseComponent[] tail = TextComponent.fromLegacyText("  §7" + describe(side, height) + "   " + keys);
         BaseComponent[] all = new BaseComponent[1 + tail.length];
