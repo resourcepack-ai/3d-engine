@@ -47,7 +47,7 @@ final class StandIn {
     private static boolean looked, works;
     private static Method getHandle, send, levelOf, setId, dataCreate, pathOf;
     private static Field connection;
-    private static Constructor<?> rotateNew, syncNew, bundleNew, profileNew, entryNew, infoNew, addNew, teleportNew, moveRotNew, attrNew, attributesNew,
+    private static Constructor<?> syncNew, bundleNew, profileNew, entryNew, infoNew, addNew, teleportNew, moveRotNew, attrNew, attributesNew,
             dataNew, cameraNew, markerNew, removeNew, infoRemoveNew;
     private static Object addPlayer, survival, playerType, markerType, vec3Zero, sharedFlags, scaleAttr, cameraAttr, speedAttr;
     private static Class<?> vec3Class;
@@ -114,8 +114,6 @@ final class StandIn {
             dataNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket").getConstructor(int.class, List.class);
 
             cameraNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundSetCameraPacket").getConstructor(entity);
-            rotateNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundPlayerRotationPacket")
-                    .getConstructor(float.class, boolean.class, float.class, boolean.class);
             Class<?> path = cl.loadClass("net.minecraft.world.entity.PositionPath");
             pathOf = path.getMethod("of", vec3Class);
             syncNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket")
@@ -336,22 +334,7 @@ final class StandIn {
         }
     }
 
-    /** The turns a stand-in can face: its head's, in 256ths of a circle. */
-    static final double STEP = 360.0 / 256;
-
-    /**
-     * Turns {@code p}'s own view by {@code degrees} of yaw, on top of
-     * wherever their mouse has it by then: a relative turn, so it never
-     * fights the mouse the way setting the view would.
-     */
-    static void turn(Player p, float degrees) {
-        if (!works) return;
-        try {
-            send(getHandle.invoke(p), rotateNew.newInstance(degrees, true, 0f, true));
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            fail(e);
-        }
-    }
+    private static final double STEP = 360.0 / 256;
 
     private static int headStep(float yaw) {
         return (int) Math.round(yaw / STEP) & 0xFF;

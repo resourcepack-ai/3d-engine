@@ -152,84 +152,20 @@ public final class PoolTable {
 
     // ---- frames ---------------------------------------------------------------------------
 
-    /**
-     * A point in the table's frame, {@code h} above the floor, in the world,
-     * where it is drawn: turned by {@link #aimOffset} about the cue ball.
-     */
+    /** A point in the table's frame, {@code h} above the floor, in the world. */
     Location at(double x, double y, double h) {
-        Location l = raw(x, y, h);
-        if (aimOffset == 0) return l;
-        double dx = l.getX() - offsetX, dz = l.getZ() - offsetZ;
-        l.setX(offsetX + dx * offsetCos - dz * offsetSin);
-        l.setZ(offsetZ + dx * offsetSin + dz * offsetCos);
-        return l;
-    }
-
-    /** A point in the table's frame in the world as it really is: for the player, the seat and the camera. */
-    Location raw(double x, double y, double h) {
         return alongZ ? new Location(world, cx + y, cy + h, cz + x) : new Location(world, cx + x, cy + h, cz - y);
     }
 
-    /** A direction in the table's frame (z up) as a world vector, as it is drawn. */
+    /** A direction in the table's frame (z up) as a world vector. */
     Vector3f dir(double x, double y, double z) {
-        Vector3f v = rawDir(x, y, z);
-        if (aimOffset == 0) return v;
-        float wx = v.x, wz = v.z;
-        v.x = (float) (wx * offsetCos - wz * offsetSin);
-        v.z = (float) (wx * offsetSin + wz * offsetCos);
-        return v;
-    }
-
-    private Vector3f rawDir(double x, double y, double z) {
         return alongZ ? new Vector3f((float) y, (float) z, (float) x) : new Vector3f((float) x, (float) z, (float) -y);
-    }
-
-    /**
-     * The still camera (see {@link StandIn}) can face only 256 ways round.
-     * So while the shooter aims, their own view is nudged onto one of those,
-     * a little at a time inside their own mouse movement, and the aim is
-     * kept where they put it by this: the shot goes {@code aimOffset}
-     * degrees of yaw round from the view, and the table is drawn turned the
-     * other way by as much about the cue ball, which is just what the camera
-     * going round the cue ball by as much would show. When S goes down the
-     * view is already one the still camera can match, so nothing moves.
-     */
-    private double aimOffset, offsetX, offsetZ, offsetCos = 1, offsetSin;
-    /** The cue ball the offset turns about, in the table's frame. */
-    private double offsetBallX = Double.NaN, offsetBallY;
-    private float lastAimYaw = Float.NaN;
-
-    private void aimOffset(double degrees) {
-        aimOffset = degrees;
-        double t = Math.toRadians(-degrees);
-        offsetCos = Math.cos(t);
-        offsetSin = Math.sin(t);
-    }
-
-    /**
-     * Nudges the view towards the nearest turn the still camera can face,
-     * by no more than a share of how far the mouse moved it this tick, and
-     * takes the nudge into the offset so the aim does not move.
-     */
-    private void nudgeView(Player p, float yaw) {
-        double moved = Float.isNaN(lastAimYaw) ? 0 : Math.abs(Math.IEEEremainder(yaw - lastAimYaw, 360));
-        lastAimYaw = yaw;
-        double aimYaw = yaw + aimOffset;
-        double target = Math.round(aimYaw / StandIn.STEP) * StandIn.STEP;
-        double want = Math.IEEEremainder(target - yaw, 360);
-        // Small against the mouse's own move, so it is lost in it.
-        double cap = Math.min(0.1, 0.15 * moved);
-        double step = Math.max(-cap, Math.min(cap, want));
-        if (Math.abs(step) < 1e-4) return;
-        StandIn.turn(p, (float) step);
-        lastAimYaw += (float) step;
-        aimOffset(aimOffset - step);
     }
 
     /** Where the table's model stands. */
     private Location bodyAt() {
         Location at = at(0, 0, 0);
-        at.setYaw((float) ((alongZ ? 90 : 0) - aimOffset));
+        at.setYaw(alongZ ? 90 : 0);
         return at;
     }
 
@@ -344,20 +280,7 @@ public final class PoolTable {
     }
 
     /** Moves and turns every ball to where the simulation has it. */
-    /** The aim offset the table and balls were last drawn with. */
-    private double drawnOffset;
-
     private void drawBalls() {
-        if (aimOffset != drawnOffset) {
-            drawnOffset = aimOffset;
-            if (body != null && body.valid()) {
-                // At once, as the view it keeps up with turns: the engine eases
-                // its models' moves, and a table kept from before still would.
-                if (body.display().getTeleportDuration() != 0) body.display().setTeleportDuration(0);
-                body.teleport(bodyAt());
-            }
-            for (BallView v : views.values()) v.lastX = Double.NaN;
-        }
         for (Ball b : sim.balls) {
             BallView v = views.get(b.number);
             if (b.onTable()) {
@@ -769,8 +692,8 @@ public final class PoolTable {
             if (ax - Math.abs(x) < ay - Math.abs(y)) x = Math.copySign(ax, x == 0 ? 1 : x);
             else y = Math.copySign(ay, y == 0 ? 1 : y);
         }
-        Location l = raw(x, y, 0);
-        Location c = raw(0, 0, 0);
+        Location l = at(x, y, 0);
+        Location c = at(0, 0, 0);
         l.setDirection(c.toVector().subtract(l.toVector()));
         return l;
     }
@@ -786,7 +709,7 @@ public final class PoolTable {
 
     /** The world yaw (degrees) that looks along {@code angle} in the table's frame. */
     float yawOf(double angle) {
-        Vector3f w = rawDir(Math.cos(angle), Math.sin(angle), 0);
+        Vector3f w = dir(Math.cos(angle), Math.sin(angle), 0);
         return (float) Math.toDegrees(Math.atan2(-w.x, w.z));
     }
 
@@ -800,7 +723,7 @@ public final class PoolTable {
      */
     private Location pivotEye() {
         double below = Math.atan(2 * BALL_BELOW * Math.tan(Math.toRadians(35 * zoom)));
-        return raw(pivotX, pivotY, BED + R + distance * Math.tan(below));
+        return at(pivotX, pivotY, BED + R + distance * Math.tan(below));
     }
 
     /**
@@ -819,7 +742,7 @@ public final class PoolTable {
 
     /** The overview's eyes: on the cloth in the middle, the camera {@link #OVERVIEW} straight up from them. */
     private Location overviewEye() {
-        return raw(0, 0, BED + 0.01);
+        return at(0, 0, BED + 0.01);
     }
 
     /** Moves {@code cam} to {@code eye}: quickly when it is near, gliding when it has far to go. */
@@ -954,6 +877,9 @@ public final class PoolTable {
     void tick() {
         stateTicks++;
         for (ShotCamera c : cameras.values()) c.refresh();
+        // The table moves at once when the still camera turns it: the engine
+        // eases its models' moves, and a table kept from before would still.
+        if (body != null && body.valid() && body.display().getTeleportDuration() != 0) body.display().setTeleportDuration(0);
         Player shooter = shooter();
         if (shotHold) afterShot(shooter);
         switch (state) {
@@ -1065,9 +991,8 @@ public final class PoolTable {
                     } else {
                         nudgeTicks = 0;
                         if (pitch < low - 0.5f) p.setRotation(yaw, low);
-                        else if (standIn(p) != null) nudgeView(p, yaw);
                     }
-                    aim = angleFromYaw((float) (yaw + aimOffset));
+                    aim = angleFromYaw(yaw);
                 }
                 jumpHeld = in.isJump();
             }
@@ -1129,15 +1054,6 @@ public final class PoolTable {
         Ball c = sim.ball(0);
         pivotX = c.x;
         pivotY = c.y;
-        if (c.x != offsetBallX || c.y != offsetBallY) {
-            offsetBallX = c.x;
-            offsetBallY = c.y;
-            Location b = raw(c.x, c.y, 0);
-            offsetX = b.getX();
-            offsetZ = b.getZ();
-            aimOffset(0);
-            lastAimYaw = Float.NaN;
-        }
         if (overview) {
             cam.lens(OVERVIEW, 1);
             glide(cam, overviewEye());
@@ -1198,7 +1114,7 @@ public final class PoolTable {
         Location view = p.getLocation();
         heldYaw = lastYaw = view.getYaw();
         heldPitch = lastPitch = view.getPitch();
-        aim = angleFromYaw((float) (heldYaw + aimOffset));
+        aim = angleFromYaw(heldYaw);
         gap = REST;
         if (standIn(p) != null) standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE, drawn());
     }
