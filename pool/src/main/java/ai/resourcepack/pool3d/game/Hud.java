@@ -37,7 +37,7 @@ final class Hud {
             case "STROKE" -> "§fmouse back, then forward through the ball §7· let go of S to stop";
             case "SPIN" -> "§fmouse moves the tip §7· let go of W to keep it";
             default -> overview ? "§7space: back to the shot"
-                    : "§7hold §fS§7 to cue · hold §fW§7 for spin · §fA/D§7 fine aim · §fscroll§7 zoom · §fspace§7 table";
+                    : "§7hold §fS§7 to cue · hold §fW§7 for spin · §fA/D§7 fine aim · §fscroll§7 zoom · §fspace§7 table · §fF5§7 camera";
         };
         BaseComponent[] tail = TextComponent.fromLegacyText("  §7" + describe(side, height) + "   " + keys);
         BaseComponent[] all = new BaseComponent[1 + tail.length];

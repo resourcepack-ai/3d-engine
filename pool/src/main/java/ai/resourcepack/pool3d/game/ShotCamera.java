@@ -11,10 +11,17 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 
 /**
- * The shooter's eyes. Minecraft has no camera a server can place, so the
- * player rides an invisible seat and the seat is moved so that their eyes are
- * where the camera should be: low behind the cue ball, looking down the cue.
- * Their own mouse still turns their head, which is what aims.
+ * The shooter's eyes, and Shooterspool's orbit camera.
+ *
+ * <p>Minecraft has no camera a server can place, and one moved from the
+ * server trails the mouse by a round trip, which is what made the first
+ * version feel laggy. So the camera is the player's own third-person view
+ * (F5): the client keeps it {@code camera_distance} behind their eyes along
+ * the way they look, turning it with every frame of the mouse. The player
+ * rides an invisible seat that puts their eyes just above the cue ball, and
+ * from there the client orbits the camera round it, left and right with the
+ * aim and up and down with the tilt, with nothing on the server in the way.
+ * The seat only moves when the cue ball does, between shots.
  *
  * <p>The seat is an item display with nothing in it, because a display's
  * moves are smoothed on the client over its teleport duration, and a rider is
@@ -87,8 +94,9 @@ final class ShotCamera {
         if (!measured && player.getVehicle() == seat) {
             // The server has them seated: read off where it puts their eyes.
             double off = player.getEyeLocation().getY() - seat.getLocation().getY();
-            if (off > 0.3 && off < 2.5) {
+            if (off > 0.01 && off < 2.5) {
                 measured = Math.abs(off - eyeAbove) < 1e-4;
+                if (!measured) eye = null; // the seat has to move for the same eyes
                 eyeAbove = off;
                 s = at.clone().subtract(0, eyeAbove, 0);
             }
@@ -102,33 +110,76 @@ final class ShotCamera {
         moveWithRider(seat, s);
     }
 
-    private double fov = 1;
+    private double lensDistance = -1, lensFov = 1;
+    private Double savedDistance, savedSpeed, savedScale;
 
     /**
-     * Narrows the player's view to {@code m} of their own field of view (a
-     * telephoto at 0.34: Shooterspool's view down the cue is about 24
-     * degrees). A server cannot set a player's field of view, but the client
-     * scales it by their speed over their walking speed, as sprinting
-     * widens it; a negative walking speed turns that the other way. It is
-     * clamped to between 0.1 and 1.5 there, eased over a few frames, and
-     * only felt with the FOV Effects option on (it is, by default).
-     *
-     * <p>Only between 0.12 and 0.4, or 1 (their own): nearer a half, the
-     * walking speed it takes is beyond what the game allows.
+     * The player shrunk as small as the game allows while seated. In third
+     * person 26.3 draws an invisible player faintly to themselves, and their
+     * head is where the camera looks; at a sixteenth it is a speck. The
+     * camera distance is in the player's own size, so it is set 16 times
+     * longer to match.
      */
-    void fov(double m) {
-        m = m >= 0.7 ? 1 : Math.max(0.12, Math.min(0.4, m));
-        if (Math.abs(m - fov) < 1e-4) return;
-        fov = m;
-        if (m == 1) {
-            player.setWalkSpeed(0.2f);
-            return;
+    static final double SCALE = 0.0625;
+
+    /**
+     * The orbit's radius, metres, and its field of view, as a share of the
+     * player's own ({@code 30 / 70.0} is Shooterspool's default 30 degrees
+     * against Minecraft's 70).
+     *
+     * <p>The radius is the {@code camera_distance} attribute, which is what
+     * the third-person view keeps between camera and eyes. The field of view
+     * cannot be set from a server at all; but the client scales it by the
+     * player's speed over their walking speed (as sprinting widens it), so a
+     * walking speed of -1 and a matching speed narrow it instead. The client
+     * clamps it to between a tenth and one and a half, eases it over a few
+     * frames, and only applies it with the FOV Effects option on, which it is
+     * by default. Seated, neither speed moves anybody.
+     */
+    void lens(double distance, double fov) {
+        fov = Math.max(0.12, Math.min(1.4, fov));
+        if (Math.abs(distance - lensDistance) > 1e-4) {
+            var size = player.getAttribute(org.bukkit.attribute.Attribute.SCALE);
+            if (size != null && savedScale == null) {
+                savedScale = size.getBaseValue();
+                size.setBaseValue(SCALE);
+                measured = false;
+            }
+            double scale = size == null ? 1 : SCALE;
+            var cam = player.getAttribute(org.bukkit.attribute.Attribute.CAMERA_DISTANCE);
+            if (cam != null) {
+                if (savedDistance == null) savedDistance = cam.getBaseValue();
+                cam.setBaseValue(Math.min(32, distance / scale));
+            }
+            lensDistance = distance;
         }
-        var attr = player.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
-        double speed = attr == null ? 0.1 : attr.getValue();
-        // The client divides by half of Bukkit's walking speed.
-        float walk = (float) (2 * speed / (2 * m - 1));
-        player.setWalkSpeed(Math.max(-1f, Math.min(1f, walk)));
+        if (Math.abs(fov - lensFov) < 1e-4) return;
+        lensFov = fov;
+        var speed = player.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+        if (speed == null) return;
+        if (savedSpeed == null) savedSpeed = speed.getBaseValue();
+        // The client's share is (speed / walk + 1) / 2, its walk half of Bukkit's.
+        if (fov < 0.5) {
+            player.setWalkSpeed(-1f);
+            speed.setBaseValue(0.5 * (1 - 2 * fov));
+        } else {
+            player.setWalkSpeed(1f);
+            speed.setBaseValue(0.5 * (2 * fov - 1));
+        }
+    }
+
+    /** Gives the player back their own camera distance, speed and walking speed. */
+    private void unlens() {
+        var cam = player.getAttribute(org.bukkit.attribute.Attribute.CAMERA_DISTANCE);
+        if (cam != null && savedDistance != null) cam.setBaseValue(savedDistance);
+        var speed = player.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+        if (speed != null && savedSpeed != null) speed.setBaseValue(savedSpeed);
+        var size = player.getAttribute(org.bukkit.attribute.Attribute.SCALE);
+        if (size != null && savedScale != null) size.setBaseValue(savedScale);
+        if (lensFov != 1 || savedSpeed != null) player.setWalkSpeed(0.2f);
+        savedDistance = savedSpeed = savedScale = null;
+        lensDistance = -1;
+        lensFov = 1;
     }
 
     /** Where the eyes were last put. */
@@ -155,8 +206,7 @@ final class ShotCamera {
             moving = false;
         }
         hide(false);
-        if (fov != 1) player.setWalkSpeed(0.2f);
-        fov = 1;
+        unlens();
     }
 
     /**

@@ -375,13 +375,24 @@ public final class Tables implements Listener {
     }
 
     /**
-     * The shot camera narrows the view with a negative walking speed, which
-     * is saved with the player: if the server stopped mid-shot, they would
-     * come back walking backwards. Put right on the way in.
+     * The shot camera's lens is a walking speed, a speed and a camera
+     * distance, all saved with the player: if the server stopped mid-shot,
+     * they would come back walking backwards. Put right on the way in.
      */
     @EventHandler
     public void onJoin(org.bukkit.event.player.PlayerJoinEvent e) {
         Player p = e.getPlayer();
+        // The shot camera's lens: a walking speed of exactly -1 or 1, a speed
+        // to match and a shorter third-person distance.
+        if (p.getWalkSpeed() == -1f || p.getWalkSpeed() == 1f) {
+            p.setWalkSpeed(0.2f);
+            var speed = p.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+            if (speed != null) speed.setBaseValue(0.1);
+            var cam = p.getAttribute(org.bukkit.attribute.Attribute.CAMERA_DISTANCE);
+            if (cam != null) cam.setBaseValue(cam.getDefaultValue());
+            var size = p.getAttribute(org.bukkit.attribute.Attribute.SCALE);
+            if (size != null && size.getBaseValue() == 0.0625) size.setBaseValue(1);
+        }
         if (p.getWalkSpeed() < 0) p.setWalkSpeed(0.2f);
         if (p.isInsideVehicle() && p.getVehicle().getScoreboardTags().contains("pool3d")) p.leaveVehicle();
     }

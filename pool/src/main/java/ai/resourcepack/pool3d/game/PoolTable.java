@@ -50,23 +50,26 @@ public final class PoolTable {
     public static final double BED = 0.775;
     /** Half the table's outside length and width (make_models.py's A_OUT, B_OUT). */
     public static final double OUT_X = 1.45, OUT_Y = 0.815;
-    /** Where the tip rests behind the cue ball while aiming, and the most it can be drawn back. */
-    static final double REST = 0.018, BRIDGE = 0.34;
+    /** Where the tip rests behind the cue ball while aiming (Shooterspool's {@code distTipCueball}), and the most it can be drawn back. */
+    static final double REST = 0.003, BRIDGE = 0.34;
     /**
-     * The shot camera, measured off Shooterspool: a telephoto, about 24
-     * degrees, from a metre and a half behind the cue ball and 20 cm above
-     * it, so the cue runs long up the middle of the screen and the table
-     * looks flat. {@link #ZOOM} is that view as a share of Minecraft's 70
-     * degrees; the wheel narrows or widens it.
+     * The shot camera, as Shooterspool's own defaults have it (its player
+     * profile: {@code initialHeadToBallDistance} 1.2, {@code fov} 30): the
+     * eye 1.2 m from the cue ball through a 30 degree view, so the cue runs
+     * long up the middle of the screen and the table looks flat.
+     * {@link #ZOOM} is that view as a share of Minecraft's 70 degrees; the
+     * wheel narrows or widens it.
      */
-    static final double DISTANCE = 1.5;
-    static final double ZOOM = 0.34, ZOOM_MIN = 0.12, ZOOM_MAX = 0.4;
-    /** The cue ball sits this share of the screen's height below its middle, whatever the tilt and zoom. */
+    static final double DISTANCE = 1.2;
+    static final double ZOOM = 30 / 70.0, ZOOM_MIN = 0.15, ZOOM_MAX = 0.9;
+    /** The cue ball sits this share of the screen's height below its middle, whatever the tilt. */
     static final double BALL_BELOW = 0.116;
-    /** The tilt a new shot starts at: the cue ball 7 degrees below the eye. */
-    static final float START_PITCH = 4.5f;
-    /** The overview camera's height above the cloth. */
+    /** The tilt a new shot starts at: the eye 9 degrees up from the cue ball, as in Shooterspool. */
+    static final float START_PITCH = 5.5f;
+    /** The overview: looking straight down from this high over the middle of the cloth, at the player's own view. */
     static final double OVERVIEW = 1.45;
+    /** Ball in hand moves this far a tick with W, A, S or D held. */
+    static final double PLACE_STEP = 0.012;
 
     enum State {IDLE, PLACE, AIM, STRIKE, ROLLING, SETTLE, OVER}
 
@@ -111,7 +114,6 @@ public final class PoolTable {
     private boolean jumpHeld;
     /** The view when S or W went down, given back when it comes up. */
     private float heldYaw, heldPitch;
-    private double baseSide, baseHeight;
     /** How far the tip is behind the ball during a stroke. */
     private double gap = REST;
     private int nudgeTicks;
@@ -306,6 +308,10 @@ public final class PoolTable {
 
     /** The cue lying on the line of the shot with its tip {@code gap} back from the ball. */
     private void drawCue(double gap) {
+        if (facingCamera()) {
+            drawCueFacing(gap);
+            return;
+        }
         Ball c = sim.ball(0);
         double dx = Math.cos(aim), dy = Math.sin(aim);
         // The tip meets the ball at (side, height) radii off centre, seen from behind.
@@ -320,11 +326,49 @@ public final class PoolTable {
             cue = engine.spawn(Assets.CUE, tip);
             cue.display().setTeleportDuration(1);
         } else cue.teleport(tip);
-        Vector3f axis = dir(ax, ay, az).normalize();
         Display d = cue.display();
+        if (d.getBillboard() != Display.Billboard.FIXED) d.setBillboard(Display.Billboard.FIXED);
+        Vector3f axis = dir(ax, ay, az).normalize();
         d.setInterpolationDelay(0);
         d.setInterpolationDuration(1);
         d.setTransformation(new Transformation(new Vector3f(), new Quaternionf().rotationTo(new Vector3f(0, 1, 0), axis),
+                new Vector3f(1, 1, 1), new Quaternionf()));
+    }
+
+    /** Whether the shooter is looking down the cue through the orbit camera. */
+    private boolean facingCamera() {
+        Player p = shooter();
+        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE;
+    }
+
+    /**
+     * The cue as the shooter sees it in the orbit camera. Turned from the
+     * server it would trail the mouse by a round trip, as the camera did; so
+     * it stands on the cue ball as a display that turns about the vertical to
+     * face the camera, which the client does every frame. The camera is
+     * always behind the cue ball along the aim, so facing it is lying along
+     * the aim, and the cue keeps up with the mouse exactly. Its tilt (the
+     * cue's elevation), where the tip meets the ball and the stroke are set
+     * in that turned frame, in which +z points at the camera and +x is the
+     * shooter's right.
+     */
+    private void drawCueFacing(double gap) {
+        Ball c = sim.ball(0);
+        Location at = at(c.x, c.y, BED + R);
+        if (cue == null || !cue.valid()) {
+            cue = engine.spawn(Assets.CUE, at);
+            cue.display().setTeleportDuration(1);
+        } else if (cue.display().getLocation().distanceSquared(at) > 1e-8) cue.teleport(at);
+        Display d = cue.display();
+        if (d.getBillboard() != Display.Billboard.VERTICAL) d.setBillboard(Display.Billboard.VERTICAL);
+        double elev = elevation(c, Math.cos(aim), Math.sin(aim));
+        double back = Math.sqrt(Math.max(0, 1 - side * side - height * height));
+        Vector3f along = new Vector3f(0, (float) Math.sin(elev), (float) Math.cos(elev));
+        Vector3f tip = new Vector3f((float) (side * R), (float) (height * R), (float) (back * R))
+                .add(new Vector3f(along).mul((float) gap));
+        d.setInterpolationDelay(0);
+        d.setInterpolationDuration(1);
+        d.setTransformation(new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), along),
                 new Vector3f(1, 1, 1), new Quaternionf()));
     }
 
@@ -529,7 +573,11 @@ public final class PoolTable {
     /** The camera {@code p} looks through, seating them if they are not standing by choice. */
     private ShotCamera camera(Player p) {
         if (standing.contains(p.getUniqueId())) return null;
-        return cameras.computeIfAbsent(p.getUniqueId(), u -> new ShotCamera(p));
+        return cameras.computeIfAbsent(p.getUniqueId(), u -> {
+            // The orbit is the third-person view, which only the player can turn on.
+            p.sendTitle("", ChatColor.WHITE + "Press F5" + ChatColor.GRAY + " for the shot camera", 5, 60, 15);
+            return new ShotCamera(p);
+        });
     }
 
     ShotCamera cameraOf(Player p) {
@@ -576,29 +624,22 @@ public final class PoolTable {
     private double pivotX, pivotY;
 
     /**
-     * The orbit camera. Left and right the mouse takes it round the pivot
-     * (which, lining up, is aiming); up and down it rises over it, down to
-     * the cloth and up to looking straight down, the pivot staying where it
-     * is on the screen. It does the same while the balls run, so the shooter
-     * can watch from wherever they like.
+     * Where the player's eyes go for the orbit: just above the pivot, so
+     * that from {@link #DISTANCE} back the pivot sits {@link #BALL_BELOW}
+     * of the screen under its middle.
      */
-    private Location orbitEye(double angle, double pitchDeg) {
+    private Location pivotEye() {
         double below = Math.atan(2 * BALL_BELOW * Math.tan(Math.toRadians(35 * zoom)));
-        double phi = Math.max(Math.toRadians(-1), Math.min(Math.toRadians(85), Math.toRadians(pitchDeg) + below));
-        double dx = Math.cos(angle), dy = Math.sin(angle);
-        double dist = DISTANCE;
-        double back = dist * Math.cos(phi), up = dist * Math.sin(phi);
-        Location pivot = at(pivotX, pivotY, BED + R);
-        Location eye = at(pivotX - dx * back, pivotY - dy * back, Math.max(BED + 0.03, BED + R + up));
-        // Not through a wall: the camera comes in to just short of it.
-        Vector toEye = eye.toVector().subtract(pivot.toVector());
-        double len = toEye.length();
-        var hit = world.rayTraceBlocks(pivot, toEye.clone().normalize(), len, org.bukkit.FluidCollisionMode.NEVER, true);
-        if (hit != null) {
-            double d = Math.max(0.2, hit.getHitPosition().distance(pivot.toVector()) - 0.15);
-            eye = pivot.clone().add(toEye.multiply(d / len));
-        }
-        return eye;
+        return at(pivotX, pivotY, BED + R + DISTANCE * Math.tan(below));
+    }
+
+    /**
+     * The lowest the player may tilt: any lower and the camera, which goes
+     * down as they look up, would be under the cloth.
+     */
+    private float lowestPitch() {
+        double eyeOverCloth = pivotEye().getY() - (cy + BED);
+        return (float) -Math.toDegrees(Math.asin(Math.min(1, Math.max(0, eyeOverCloth - 0.025) / DISTANCE)));
     }
 
     /** The orbit's angle in the table's frame from the way the player faces. */
@@ -606,8 +647,9 @@ public final class PoolTable {
         return angleOf(-Math.sin(Math.toRadians(yaw)), Math.cos(Math.toRadians(yaw)));
     }
 
+    /** The overview's eyes: on the cloth in the middle, the camera {@link #OVERVIEW} straight up from them. */
     private Location overviewEye() {
-        return at(0, 0, BED + OVERVIEW);
+        return at(0, 0, BED + 0.01);
     }
 
     /** Moves {@code cam} to {@code eye}: quickly when it is near, gliding when it has far to go. */
@@ -617,7 +659,7 @@ public final class PoolTable {
         cam.to(eye, d > 0.25 ? (int) Math.min(14, 6 + d * 3) : 1);
     }
 
-    /** Ball in hand: the cue ball goes where the shooter points. */
+    /** Ball in hand: the cue ball goes where the shooter moves it. */
     void place() {
         Ball c = sim.ball(0);
         if (!c.onTable()) {
@@ -735,13 +777,9 @@ public final class PoolTable {
             case PLACE -> placing(shooter);
             case AIM -> aiming(shooter);
             case STRIKE -> striking();
-            case ROLLING -> {
-                rolling();
-                watching(shooter);
-            }
+            case ROLLING -> rolling();
             case SETTLE -> {
                 rolling();
-                watching(shooter);
                 if (stateTicks > 8 && !sim.moving() && dropsDone()) judge();
             }
             case OVER -> {
@@ -759,36 +797,41 @@ public final class PoolTable {
         return true;
     }
 
+    /**
+     * Ball in hand, from the overview: W, A, S and D move the cue ball across
+     * the cloth (up, left, down and right on the screen), and a right-click
+     * puts it down.
+     */
     private void placing(Player p) {
         if (p == null || !holding(p)) {
             hint(p, "Hold your cue to place the cue ball");
             return;
         }
-        // Ball in hand is played from above, as in Shooterspool's overview: the
-        // cue ball follows the crosshair across the cloth.
         ShotCamera cam = camera(p);
-        if (cam != null) {
-            if (placeLook) p.setRotation(overviewYaw(), 90);
-            placeLook = false;
-            cam.fov(1);
-            glide(cam, overviewEye());
-        }
-        Location eye = p.getEyeLocation();
-        Vector look = eye.getDirection();
-        double plane = cy + BED + R;
-        if (look.getY() >= -1e-3) return;
-        double t = (plane - eye.getY()) / look.getY();
-        if (t <= 0 || t > 6) return;
-        double[] xy = toTable(eye.getX() + look.getX() * t, eye.getZ() + look.getZ() * t);
+        if (cam == null) return;
+        if (placeLook) p.setRotation(overviewYaw(), 90);
+        placeLook = false;
+        cam.lens(OVERVIEW, 1);
+        glide(cam, overviewEye());
+        placeValid = clear(sim.ball(0).x, sim.ball(0).y, 0);
+        org.bukkit.Input in = p.getCurrentInput();
+        int up = (in.isForward() ? 1 : 0) - (in.isBackward() ? 1 : 0);
+        int right = (in.isRight() ? 1 : 0) - (in.isLeft() ? 1 : 0);
+        if (up == 0 && right == 0) return;
+        double a = angleFromYaw(p.getLocation().getYaw());
+        double step = PLACE_STEP * (in.isSprint() ? 2.5 : 1);
+        // Right on the screen, looking down with the top of the screen along a.
+        double dx = Math.cos(a) * up + Math.sin(a) * right, dy = Math.sin(a) * up - Math.cos(a) * right;
+        double len = Math.hypot(dx, dy);
+        Ball c = sim.ball(0);
         double maxX = kitchenOnly ? TableGeometry.HEAD_STRING : HALF_LENGTH - TableGeometry.CONTACT;
-        double x = Math.max(-HALF_LENGTH + TableGeometry.CONTACT, Math.min(maxX, xy[0]));
-        double y = Math.max(-HALF_WIDTH + TableGeometry.CONTACT, Math.min(HALF_WIDTH - TableGeometry.CONTACT, xy[1]));
-        placeValid = clear(x, y, 0);
-        if (placeValid) {
-            Ball c = sim.ball(0);
+        double x = Math.max(-HALF_LENGTH + TableGeometry.CONTACT, Math.min(maxX, c.x + dx / len * step));
+        double y = Math.max(-HALF_WIDTH + TableGeometry.CONTACT, Math.min(HALF_WIDTH - TableGeometry.CONTACT, c.y + dy / len * step));
+        if (clear(x, y, 0)) {
             c.x = x;
             c.y = y;
         }
+        placeValid = clear(c.x, c.y, 0);
     }
 
     private boolean holding(Player p) {
@@ -798,11 +841,12 @@ public final class PoolTable {
     /**
      * Lining up, the Shooterspool way. The mouse aims (left and right, the
      * camera going round the cue ball) and tilts the view (up and down, the
-     * camera rising over it). Holding S, the mouse strokes the cue instead:
-     * back draws it, forward sends it, and how fast it is going when the tip
-     * reaches the ball is the shot. Holding W, the mouse moves where the tip
-     * will meet the ball. A and D turn the aim a hair at a time, space looks
-     * down on the whole table, and the wheel zooms.
+     * camera rising over it), all of it the client's own third-person view.
+     * Holding S, the mouse strokes the cue instead: back draws it, forward
+     * sends it, and how fast it is going when the tip reaches the ball is the
+     * shot. Holding E's stand-in W, the mouse moves where the tip will meet
+     * the ball. A and D turn the aim a hair at a time, space looks down on
+     * the whole table, and the wheel zooms.
      */
     private void aiming(Player p) {
         if (p == null) return;
@@ -829,12 +873,16 @@ public final class PoolTable {
                 else if (in.isForward() && !overview) startHold(p, Mode.SPIN);
                 else if (!overview) {
                     int turn = (in.isRight() ? 1 : 0) - (in.isLeft() ? 1 : 0);
+                    float low = lowestPitch();
                     if (turn != 0) {
                         // A twentieth of a degree a tick, faster the longer it is held.
                         nudgeTicks++;
                         yaw += (float) (turn * Math.min(1.5, 0.05 + nudgeTicks * 0.012));
-                        p.setRotation(yaw, pitch);
-                    } else nudgeTicks = 0;
+                        p.setRotation(yaw, Math.max(low, pitch));
+                    } else {
+                        nudgeTicks = 0;
+                        if (pitch < low - 0.5f) p.setRotation(yaw, low);
+                    }
                     aim = angleFromYaw(yaw);
                 }
                 jumpHeld = in.isJump();
@@ -844,7 +892,10 @@ public final class PoolTable {
                     endHold(p);
                     break;
                 }
-                double g = Math.min(BRIDGE, REST + (pitch - heldPitch) * tables.strokeScale);
+                // The mouse turned the view this far since the last tick; it is
+                // turned straight back, so the camera holds still.
+                double moved = held(p, yaw, pitch)[1];
+                double g = Math.min(BRIDGE, gap + moved * tables.strokeScale);
                 if (g <= 0 && g < gap) {
                     // The tip has reached the ball, going (gap - g) in this tick.
                     double cueSpeed = (gap - g) / 0.05;
@@ -870,8 +921,9 @@ public final class PoolTable {
                     endHold(p);
                     break;
                 }
-                double s = baseSide + (yaw - heldYaw) * tables.spinScale;
-                double h = baseHeight - (pitch - heldPitch) * tables.spinScale;
+                double[] moved = held(p, yaw, pitch);
+                double s = side + moved[0] * tables.spinScale;
+                double h = height - moved[1] * tables.spinScale;
                 double len = Math.hypot(s, h);
                 if (len > 0.5) {
                     s *= 0.5 / len;
@@ -885,32 +937,33 @@ public final class PoolTable {
         Ball c = sim.ball(0);
         pivotX = c.x;
         pivotY = c.y;
-        cam.fov(overview ? 1 : zoom);
-        if (overview) glide(cam, overviewEye());
-        else if (mode == Mode.AIM) glide(cam, orbitEye(aim, pitch));
+        if (overview) {
+            cam.lens(OVERVIEW, 1);
+            glide(cam, overviewEye());
+        } else {
+            cam.lens(DISTANCE, zoom);
+            glide(cam, pivotEye());
+        }
         // Looked at from under the cue's line, the cue would hang across the
         // view from above: it is put away until the camera is over it again.
-        Location eye = cam.eye();
-        double over = eye == null ? 1 : eye.getY() - (cy + BED + R)
-                - Math.hypot(eye.getX() - at(c.x, c.y, 0).getX(), eye.getZ() - at(c.x, c.y, 0).getZ())
-                * Math.tan(elevation(c, Math.cos(aim), Math.sin(aim)));
-        if (mode == Mode.STROKE || overview || over > 0.02) drawCue(mode == Mode.STROKE ? gap : REST);
+        double camUp = Math.sin(Math.toRadians(mode == Mode.AIM ? pitch : heldPitch)) * DISTANCE
+                + (pivotEye().getY() - (cy + BED + R));
+        double cueUp = Math.tan(elevation(c, Math.cos(aim), Math.sin(aim))) * DISTANCE;
+        if (mode == Mode.STROKE || overview || camUp > cueUp + 0.02) drawCue(mode == Mode.STROKE ? gap : REST);
         else hideCue();
         if (tables.guide && mode != Mode.STROKE && !overview) drawGuide();
         else hideGuide();
     }
 
     /**
-     * While the balls run the camera stays on the orbit round where the cue
-     * ball was struck, and the mouse still takes it round and up and down,
-     * as in Shooterspool: the shooter watches from wherever they like.
+     * While S or W is held the mouse works the cue, and the view must not
+     * move: what it turned since the last tick (yaw, pitch, degrees) is read
+     * off and the view is put back where it was held.
      */
-    private void watching(Player p) {
-        if (p == null || mode != Mode.AIM) return;
-        ShotCamera cam = cameras.get(p.getUniqueId());
-        if (cam == null || overview) return;
-        Location view = p.getLocation();
-        glide(cam, orbitEye(angleFromYaw(view.getYaw()), view.getPitch()));
+    private double[] held(Player p, float yaw, float pitch) {
+        double dy = Math.IEEEremainder(yaw - heldYaw, 360), dp = pitch - heldPitch;
+        if (dy != 0 || dp != 0) p.setRotation(heldYaw, heldPitch);
+        return new double[]{dy, dp};
     }
 
     /** S or W went down: the camera holds still and the mouse works the cue. */
@@ -919,17 +972,13 @@ public final class PoolTable {
         Location view = p.getLocation();
         heldYaw = view.getYaw();
         heldPitch = view.getPitch();
-        baseSide = side;
-        baseHeight = height;
         gap = REST;
     }
 
-    /** S or W came up without a shot: the view goes back to where it was. */
+    /** S or W came up without a shot: the cue goes back to rest. */
     private void endHold(Player p) {
-        Mode was = mode;
         mode = Mode.AIM;
         gap = REST;
-        if (p != null && was != Mode.AIM) p.setRotation(heldYaw, heldPitch);
     }
 
     private float overviewYaw, overviewPitch;
@@ -992,6 +1041,17 @@ public final class PoolTable {
 
     private void drawCueFollow() {
         if (cue == null || !cue.valid()) return;
+        if (cue.display().getBillboard() == Display.Billboard.VERTICAL) {
+            // Through the ball, on the same line: the facing cue only slides along it.
+            Transformation t = cue.display().getTransformation();
+            Vector3f along = new Quaternionf(t.getLeftRotation()).transform(new Vector3f(0, 1, 0));
+            Display d = cue.display();
+            d.setInterpolationDelay(0);
+            d.setInterpolationDuration(2);
+            d.setTransformation(new Transformation(new Vector3f(t.getTranslation()).sub(along.mul(0.06f)), t.getLeftRotation(),
+                    t.getScale(), t.getRightRotation()));
+            return;
+        }
         double dx = Math.cos(aim), dy = Math.sin(aim);
         Vector3f push = dir(dx * 0.06, dy * 0.06, 0);
         cue.teleport(cue.display().getLocation().add(push.x, 0, push.z));
@@ -1080,7 +1140,7 @@ public final class PoolTable {
                 case PLACE -> {
                     if (!holding(p)) Hud.actionBar(p, ChatColor.GRAY + "Hold your cue to place the cue ball");
                     else Hud.actionBar(p, ChatColor.WHITE + "Ball in hand" + ChatColor.GRAY + (kitchenOnly ? " behind the head string" : "")
-                            + "  ·  look where it goes, right-click to put it down" + (placeValid ? "" : ChatColor.RED + "  (touching a ball)"));
+                            + "  ·  W/A/S/D move it (sprint for faster), right-click to put it down" + (placeValid ? "" : ChatColor.RED + "  (touching a ball)"));
                 }
                 case AIM -> {
                     if (!holding(p)) Hud.actionBar(p, ChatColor.GRAY + "Hold your cue to shoot");
