@@ -669,6 +669,7 @@ public final class PoolTable {
             // The orbit is the third-person view, which only the player can turn on.
             p.sendTitle("", ChatColor.WHITE + "Press F5" + ChatColor.GRAY + " for the shot camera", 5, 60, 15);
             SelfClickFilter.install(p);
+            Hotbar.fill(p);
             return new ShotCamera(p);
         });
     }
@@ -688,6 +689,7 @@ public final class PoolTable {
         if (c != null) {
             c.close(standSpot(c.eye()));
             SelfClickFilter.remove(c.player);
+            Hotbar.restore(c.player);
         }
     }
 

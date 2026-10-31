@@ -394,6 +394,7 @@ public final class Tables implements Listener {
             if (size != null && size.getBaseValue() == 0.0625) size.setBaseValue(1);
         }
         if (p.getWalkSpeed() < 0) p.setWalkSpeed(0.2f);
+        Hotbar.restore(p);
         if (p.isInsideVehicle() && p.getVehicle().getScoreboardTags().contains("pool3d")) p.leaveVehicle();
     }
 
