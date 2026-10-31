@@ -350,7 +350,12 @@ public final class PoolTable {
     private void drawBalls() {
         if (aimOffset != drawnOffset) {
             drawnOffset = aimOffset;
-            if (body != null && body.valid()) body.teleport(bodyAt());
+            if (body != null && body.valid()) {
+                // At once, as the view it keeps up with turns: the engine eases
+                // its models' moves, and a table kept from before still would.
+                if (body.display().getTeleportDuration() != 0) body.display().setTeleportDuration(0);
+                body.teleport(bodyAt());
+            }
             for (BallView v : views.values()) v.lastX = Double.NaN;
         }
         for (Ball b : sim.balls) {
