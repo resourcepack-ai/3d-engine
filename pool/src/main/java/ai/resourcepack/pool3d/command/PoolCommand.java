@@ -116,6 +116,12 @@ public final class PoolCommand implements TabExecutor {
             sender.sendMessage(err == null ? "ok" : err);
             return true;
         }
+        if (a[1].equals("hold")) {
+            Player p = org.bukkit.Bukkit.getPlayerExact(a[2]);
+            if (p != null) t.testHold(p);
+            sender.sendMessage("ok");
+            return true;
+        }
         if (a[1].equals("click")) {
             Player p = org.bukkit.Bukkit.getPlayerExact(a[2]);
             if (p != null) t.click(p);

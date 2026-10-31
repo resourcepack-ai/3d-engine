@@ -54,6 +54,7 @@ final class StandIn {
     static synchronized boolean available(Logger log) {
         if (looked) return works;
         looked = true;
+        StandIn.log = log;
         try {
             ClassLoader cl = Class.forName("net.minecraft.server.level.ServerPlayer").getClassLoader();
             Class<?> serverPlayer = cl.loadClass("net.minecraft.server.level.ServerPlayer");
@@ -90,8 +91,9 @@ final class StandIn {
 
             addNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundAddEntityPacket").getConstructor(int.class, UUID.class,
                     double.class, double.class, double.class, float.class, float.class, entityType, int.class, vec3Class, double.class);
-            playerType = entityType.getField("PLAYER").get(null);
-            markerType = entityType.getField("MARKER").get(null);
+            // The types' constants moved from EntityType to EntityTypes in 26.1.
+            playerType = constant(cl, "PLAYER", "net.minecraft.world.entity.EntityTypes", "net.minecraft.world.entity.EntityType");
+            markerType = constant(cl, "MARKER", "net.minecraft.world.entity.EntityTypes", "net.minecraft.world.entity.EntityType");
             vec3Zero = vec3Class.getField("ZERO").get(null);
             moveRotNew = moveRot.getConstructor(vec3Class, vec3Class, float.class, float.class);
             teleportNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket")
@@ -120,6 +122,20 @@ final class StandIn {
         }
         return works;
     }
+
+    private static Object constant(ClassLoader cl, String field, String... classes) throws ReflectiveOperationException {
+        ReflectiveOperationException last = null;
+        for (String c : classes) {
+            try {
+                return cl.loadClass(c).getField(field).get(null);
+            } catch (ReflectiveOperationException e) {
+                last = e;
+            }
+        }
+        throw last;
+    }
+
+    private static Logger log;
 
     private final Player viewer;
     private final int id = 0x7F000000 | ThreadLocalRandom.current().nextInt(0x00FFFFFF);
@@ -169,7 +185,7 @@ final class StandIn {
             send(handle, cameraNew.newInstance(marker));
             shown = true;
         } catch (ReflectiveOperationException | RuntimeException e) {
-            works = false;
+            fail(e);
         }
     }
 
@@ -188,8 +204,14 @@ final class StandIn {
             send(handle, removeNew.newInstance((Object) new int[]{id}));
             send(handle, infoRemoveNew.newInstance(List.of(uuid)));
         } catch (ReflectiveOperationException | RuntimeException e) {
-            works = false;
+            fail(e);
         }
+    }
+
+    private static void fail(Exception e) {
+        works = false;
+        if (log != null) log.warning("The still stroke camera failed, so the view is put back each tick instead: "
+                + (e instanceof java.lang.reflect.InvocationTargetException t && t.getCause() != null ? t.getCause() : e));
     }
 
     private static Object attribute(Object holder, double value) throws ReflectiveOperationException {

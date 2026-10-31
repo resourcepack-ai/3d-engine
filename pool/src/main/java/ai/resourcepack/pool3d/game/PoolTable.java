@@ -749,6 +749,16 @@ public final class PoolTable {
 
     private boolean placeValid;
 
+    /** Holds S for {@code p} for two seconds, whatever their keys say: for testing the still camera from the console. */
+    public void testHold(Player p) {
+        if (state == State.AIM && mode == Mode.AIM) {
+            startHold(p, Mode.STROKE);
+            testHold = 40;
+        }
+    }
+
+    private int testHold;
+
     /** Puts the cue ball at (x, y) in the table's frame: for testing from the console. */
     public void placeCue(double x, double y) {
         Ball c = sim.ball(0);
@@ -900,7 +910,7 @@ public final class PoolTable {
                 jumpHeld = in.isJump();
             }
             case STROKE -> {
-                if (!in.isBackward()) {
+                if (!in.isBackward() && testHold-- <= 0) {
                     endHold(p);
                     break;
                 }
@@ -1002,6 +1012,7 @@ public final class PoolTable {
     private void endHold(Player p) {
         mode = Mode.AIM;
         gap = REST;
+        testHold = 0;
         if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
     }
 
