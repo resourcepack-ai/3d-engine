@@ -10,16 +10,16 @@ import ai.resourcepack.pool3d.physics.TableGeometry;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
-import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.Quaternionf;
@@ -96,7 +96,9 @@ public final class PoolTable {
     private ModelInstance body;
     private final Map<Integer, BallView> views = new HashMap<>();
     private ModelInstance cue, ghost;
-    private final BlockDisplay[] lines = new BlockDisplay[3];
+    /** The guide's bands: where the object ball goes, and where the cue ball goes after it. */
+    private final ItemDisplay[] bands = new ItemDisplay[2];
+    private final int[] bandColours = {-1, -1};
     private BossBar bar;
 
     // The shot being lined up.
@@ -500,56 +502,75 @@ public final class PoolTable {
         Ball c = sim.ball(0);
         Aim.Guide g = Aim.trace(sim, c, aim);
         double dx = Math.cos(aim), dy = Math.sin(aim);
-        double lineH = BED + 0.0012;
         Location gl = at(g.gx(), g.gy(), BED + R);
         if (ghost == null || !ghost.valid()) {
             ghost = engine.spawn(Assets.GHOST, gl);
             ghost.display().setTeleportDuration(1);
             ghost.display().setBrightness(new Display.Brightness(15, 15));
         } else ghost.teleport(gl);
-        double len = Math.hypot(g.gx() - c.x, g.gy() - c.y) - 2 * R;
-        line(0, c.x + dx * R, c.y + dy * R, dx, dy, Math.max(0, len), lineH, Material.WHITE_CONCRETE);
+        // As Shooterspool draws it: the ring where the cue ball meets the
+        // ball, a fading band in that ball's colour the way it goes, and a
+        // fainter white one the way the cue ball goes on. Each is as long as
+        // the share of the blow it takes.
         if (g.hit() >= 0) {
             Ball o = sim.ball(g.hit());
-            line(1, o.x + g.ox() * R, o.y + g.oy() * R, g.ox(), g.oy(), 0.32, lineH, Material.WHITE_CONCRETE);
-            line(2, g.gx() + g.tx() * R, g.gy() + g.ty() * R, g.tx(), g.ty(), g.tx() == 0 && g.ty() == 0 ? 0 : 0.16, lineH, Material.LIGHT_GRAY_CONCRETE);
+            double full = Math.max(0, dx * g.ox() + dy * g.oy());
+            band(0, o.x, o.y, g.ox(), g.oy(), 0.10 + 0.30 * full, 2 * R, shade(o.number));
+            double thin = Math.sqrt(Math.max(0, 1 - full * full));
+            if (g.tx() == 0 && g.ty() == 0 || thin < 0.05) band(1, 0, 0, 1, 0, 0, 0, 0);
+            else band(1, g.gx(), g.gy(), g.tx(), g.ty(), 0.06 + 0.24 * thin, 1.2 * R, 0xFFFFFF);
         } else if (g.hit() == -1) {
-            line(1, g.gx(), g.gy(), g.ox(), g.oy(), 0.22, lineH, Material.LIGHT_GRAY_CONCRETE);
-            line(2, 0, 0, 1, 0, 0, lineH, Material.WHITE_CONCRETE);
+            band(0, g.gx(), g.gy(), g.ox(), g.oy(), 0.22, 1.2 * R, 0xFFFFFF);
+            band(1, 0, 0, 1, 0, 0, 0, 0);
         } else {
-            line(1, 0, 0, 1, 0, 0, lineH, Material.WHITE_CONCRETE);
-            line(2, 0, 0, 1, 0, 0, lineH, Material.WHITE_CONCRETE);
+            band(0, 0, 0, 1, 0, 0, 0, 0);
+            band(1, 0, 0, 1, 0, 0, 0, 0);
         }
     }
 
-    /** Guide line {@code i}: from (x, y) along (dx, dy), {@code len} long, drawn flat on the cloth. */
-    private void line(int i, double x, double y, double dx, double dy, double len, double h, Material m) {
-        Location at = at(x, y, h);
-        BlockDisplay d = lines[i];
+    /** The colour of a ball's band: its own, a little deepened, as a shadow on the cloth. */
+    private static int shade(int number) {
+        int[] colours = {0xFFFFFF, 0xF2C200, 0x1E4FC2, 0xD62718, 0x5B2A86, 0xF07A10, 0x147A3A, 0x7A1F1F, 0x202020};
+        int c = colours[number <= 8 ? number : number - 8];
+        int r = (c >> 16 & 255) * 3 / 4, gr = (c >> 8 & 255) * 3 / 4, b = (c & 255) * 3 / 4;
+        return r << 16 | gr << 8 | b;
+    }
+
+    /**
+     * Band {@code i}: flat on the cloth from (x, y) along (dx, dy),
+     * {@code len} long and {@code width} wide, fading out towards its end,
+     * tinted {@code rgb}; nothing when {@code len} is 0.
+     */
+    private void band(int i, double x, double y, double dx, double dy, double len, double width, int rgb) {
+        Location at = at(x, y, BED + 0.0015);
+        ItemDisplay d = bands[i];
         if (d == null || !d.isValid()) {
-            d = world.spawn(at, BlockDisplay.class, e -> {
+            d = world.spawn(at, ItemDisplay.class, e -> {
                 e.setPersistent(false);
                 e.setBrightness(new Display.Brightness(15, 15));
                 e.setTeleportDuration(1);
                 e.addScoreboardTag("pool3d");
             });
-            lines[i] = d;
-        } else d.teleport(at);
-        d.setBlock(m.createBlockData());
-        Vector3f w = dir(dx, dy, 0);
-        float yaw = (float) Math.atan2(-w.z, w.x);
-        Quaternionf rot = new Quaternionf().rotateY(yaw);
-        float width = 0.0026f, thick = 0.0006f;
-        Vector3f shift = rot.transform(new Vector3f(0, 0, -width / 2));
-        transform(d, new Transformation(shift, rot, new Vector3f((float) Math.max(0, len), len > 0 ? thick : 0, width), new Quaternionf()), 1);
+            bands[i] = d;
+            bandColours[i] = -1;
+        } else if (d.getLocation().distanceSquared(at) > 1e-10) d.teleport(at);
+        if (len > 0 && bandColours[i] != rgb) {
+            bandColours[i] = rgb;
+            d.setItemStack(Bukkit.getItemFactory().createItemStack(
+                    "minecraft:paper[minecraft:item_model=\"pool:band\",minecraft:custom_model_data={colors:[" + rgb + "]}]"));
+        }
+        Vector3f w = dir(dx, dy, 0).normalize();
+        Quaternionf rot = new Quaternionf().rotateY((float) Math.atan2(w.x, w.z));
+        Vector3f shift = new Vector3f(w).mul((float) (len / 2));
+        transform(d, new Transformation(shift, rot, len > 0 ? new Vector3f((float) width, 1, (float) len) : new Vector3f(), new Quaternionf()), 1);
     }
 
     private void hideGuide() {
         if (ghost != null) ghost.remove();
         ghost = null;
-        for (int i = 0; i < lines.length; i++) {
-            if (lines[i] != null) lines[i].remove();
-            lines[i] = null;
+        for (int i = 0; i < bands.length; i++) {
+            if (bands[i] != null) bands[i].remove();
+            bands[i] = null;
         }
     }
 

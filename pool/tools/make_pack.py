@@ -8,7 +8,10 @@ src/main/resources/pack/ (shipped into 3D Engine's pack/ folder):
   * the HUD font: a cue ball with a red dot where the tip will meet it, and a
     power bar;
   * the cue item: an icon in the inventory, nothing in the hand (the cue you
-    see is the one on the table).
+    see is the one on the table);
+  * the aiming guide's band, Shooterspool's way of showing where a ball goes:
+    a soft stripe flat on the cloth, fading out along its length, tinted per
+    ball from the item's custom_model_data colour.
 
     python tools/make_pack.py
 """
@@ -168,7 +171,35 @@ def make_item():
         "hand_animation_on_swap": False}, indent=2))
 
 
+# ---- the guide's band ----------------------------------------------------------------------
+
+def make_band():
+    w, h = 16, 64
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    for y in range(h):
+        # Strongest where the ball leaves, gone by the far end.
+        along = (1 - y / (h - 1)) ** 1.6
+        for x in range(w):
+            across = 1 - abs((x + 0.5) / w * 2 - 1)
+            soft = min(1.0, across * 2.2)
+            img.putpixel((x, y), (255, 255, 255, int(round(170 * along * soft))))
+    img.save(os.path.join(OUT, "textures", "item", "band.png"))
+    # Flat on the display's middle, 1 x 1 block; the table scales and turns it.
+    write(os.path.join(OUT, "models", "item", "band.json"), json.dumps({
+        "textures": {"band": "pool:item/band", "particle": "pool:item/band"},
+        "elements": [{"from": [0, 8, 0], "to": [16, 8, 16], "shade": False,
+                      "faces": {"up": {"uv": [0, 0, 16, 16], "texture": "#band", "tintindex": 0}}}]}, indent=2))
+    write(os.path.join(OUT, "items", "band.json"), json.dumps({
+        "model": {"type": "minecraft:model", "model": "pool:item/band",
+                  "tints": [{"type": "minecraft:custom_model_data", "index": 0, "default": 16777215}]}}, indent=2))
+
+
 if __name__ == "__main__":
-    make_sounds()
-    make_font()
-    make_item()
+    import sys
+    if sys.argv[1:] == ["band"]:
+        make_band()
+    else:
+        make_sounds()
+        make_font()
+        make_item()
+        make_band()

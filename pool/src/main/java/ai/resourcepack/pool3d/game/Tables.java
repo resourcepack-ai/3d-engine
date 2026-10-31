@@ -54,7 +54,7 @@ public final class Tables implements Listener {
         this.plugin = plugin;
         this.engine = engine;
         this.file = new File(plugin.getDataFolder(), "tables.yml");
-        this.guide = plugin.getConfig().getBoolean("aim-guide", false);
+        this.guide = plugin.getConfig().getBoolean("aim-guide", true);
         this.strokeScale = plugin.getConfig().getDouble("stroke.sensitivity", 0.012);
         this.strokePower = plugin.getConfig().getDouble("stroke.power", 1.0);
         this.spinScale = plugin.getConfig().getDouble("spin-sensitivity", 0.012);

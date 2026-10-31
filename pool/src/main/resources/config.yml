@@ -2,9 +2,10 @@
 #
 # Tables are placed with /pool create and kept in tables.yml.
 
-# Draw the aiming guide (the line to the ghost ball, and where the object ball
-# goes). Off by default, as in Shooterspool; F toggles it at the table.
-aim-guide: false
+# Draw the aiming guide, as Shooterspool does: a ring where the cue ball meets
+# the ball it is aimed at, and fading bands where each goes. F toggles it at
+# the table.
+aim-guide: true
 
 # The stroke: hold S and move the mouse back and forward. How far the cue moves
 # for each degree the mouse turns the view, in metres, and a multiplier on how
