@@ -298,8 +298,10 @@ public final class Tables implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent e) {
-        if (e.getHand() != EquipmentSlot.HAND) return;
         Player p = e.getPlayer();
+        // At the shot, a click is for the game and nothing else.
+        if (seated(p)) e.setCancelled(true);
+        if (e.getHand() != EquipmentSlot.HAND) return;
         if ((e.getAction() == Action.RIGHT_CLICK_BLOCK || e.getAction() == Action.RIGHT_CLICK_AIR) && of(p) == null) {
             PoolTable t = lookedAt(p);
             if (t != null) {
@@ -312,6 +314,32 @@ public final class Tables implements Listener {
         PoolTable t = of(p);
         if (t == null) return;
         if (e.getAction() == Action.RIGHT_CLICK_AIR || e.getAction() == Action.RIGHT_CLICK_BLOCK) t.click(p);
+    }
+
+    /** Whether {@code p} is seated at the shot, where clicks must not reach the world. */
+    private boolean seated(Player p) {
+        PoolTable t = of(p);
+        return t != null && t.cameraOf(p) != null;
+    }
+
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onBreak(org.bukkit.event.block.BlockBreakEvent e) {
+        if (seated(e.getPlayer())) e.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onDamageBlock(org.bukkit.event.block.BlockDamageEvent e) {
+        if (seated(e.getPlayer())) e.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onInteractEntity(org.bukkit.event.player.PlayerInteractEntityEvent e) {
+        if (seated(e.getPlayer())) e.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onHit(org.bukkit.event.entity.EntityDamageByEntityEvent e) {
+        if (e.getDamager() instanceof Player p && seated(p)) e.setCancelled(true);
     }
 
     @EventHandler
