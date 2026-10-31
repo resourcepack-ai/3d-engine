@@ -501,6 +501,11 @@ public final class PoolTable {
     private void drawGuide() {
         Ball c = sim.ball(0);
         Aim.Guide g = Aim.trace(sim, c, aim);
+        // Aimed at no ball, nothing is drawn.
+        if (g.hit() < 0) {
+            hideGuide();
+            return;
+        }
         double dx = Math.cos(aim), dy = Math.sin(aim);
         Location gl = at(g.gx(), g.gy(), BED + R);
         if (ghost == null || !ghost.valid()) {
@@ -512,20 +517,12 @@ public final class PoolTable {
         // ball, a fading band in that ball's colour the way it goes, and a
         // fainter white one the way the cue ball goes on. Each is as long as
         // the share of the blow it takes.
-        if (g.hit() >= 0) {
-            Ball o = sim.ball(g.hit());
-            double full = Math.max(0, dx * g.ox() + dy * g.oy());
-            band(0, o.x, o.y, g.ox(), g.oy(), 0.10 + 0.30 * full, 2 * R, shade(o.number));
-            double thin = Math.sqrt(Math.max(0, 1 - full * full));
-            if (g.tx() == 0 && g.ty() == 0 || thin < 0.05) band(1, 0, 0, 1, 0, 0, 0, 0);
-            else band(1, g.gx(), g.gy(), g.tx(), g.ty(), 0.06 + 0.24 * thin, 1.2 * R, 0xFFFFFF);
-        } else if (g.hit() == -1) {
-            band(0, g.gx(), g.gy(), g.ox(), g.oy(), 0.22, 1.2 * R, 0xFFFFFF);
-            band(1, 0, 0, 1, 0, 0, 0, 0);
-        } else {
-            band(0, 0, 0, 1, 0, 0, 0, 0);
-            band(1, 0, 0, 1, 0, 0, 0, 0);
-        }
+        Ball o = sim.ball(g.hit());
+        double full = Math.max(0, dx * g.ox() + dy * g.oy());
+        band(0, o.x, o.y, g.ox(), g.oy(), 0.10 + 0.30 * full, 2 * R, shade(o.number));
+        double thin = Math.sqrt(Math.max(0, 1 - full * full));
+        if (g.tx() == 0 && g.ty() == 0 || thin < 0.05) band(1, 0, 0, 1, 0, 0, 0, 0);
+        else band(1, g.gx(), g.gy(), g.tx(), g.ty(), 0.06 + 0.24 * thin, 1.2 * R, 0xFFFFFF);
     }
 
     /** The colour of a ball's band: its own, a little deepened, as a shadow on the cloth. */
