@@ -46,7 +46,7 @@ final class StandIn {
     private static boolean looked, works;
     private static Method getHandle, send, levelOf, setId, dataCreate;
     private static Field connection;
-    private static Constructor<?> headNew, profileNew, entryNew, infoNew, addNew, teleportNew, moveRotNew, attrNew, attributesNew,
+    private static Constructor<?> bundleNew, profileNew, entryNew, infoNew, addNew, teleportNew, moveRotNew, attrNew, attributesNew,
             dataNew, cameraNew, markerNew, removeNew, infoRemoveNew;
     private static Object addPlayer, survival, playerType, markerType, vec3Zero, sharedFlags, scaleAttr, cameraAttr, speedAttr;
     private static Class<?> vec3Class;
@@ -113,7 +113,7 @@ final class StandIn {
             dataNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket").getConstructor(int.class, List.class);
 
             cameraNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundSetCameraPacket").getConstructor(entity);
-            headNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundRotateHeadPacket").getConstructor(entity, byte.class);
+            bundleNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundBundlePacket").getConstructor(Iterable.class);
             markerNew = cl.loadClass("net.minecraft.world.entity.Marker").getConstructor(entityType, level);
             removeNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket").getConstructor(int[].class);
             infoRemoveNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket").getConstructor(List.class);
@@ -161,29 +161,18 @@ final class StandIn {
 
     /**
      * Makes the stand-in on the viewer's client, parked out of sight above
-     * {@code eye}, ahead of the stroke that needs it. The client only takes a
-     * new size on its next tick, so a stand-in made on the spot is seen for a
-     * frame at a player's full size, the camera flung back by sixteen times
-     * its distance; made early, it is ready.
+     * {@code eye}, ahead of the stroke that needs it.
      */
     void prepare(Location eye, double scale, double cameraDistance) {
         if (spawned) return;
         try {
             Object handle = getHandle.invoke(viewer);
+            List<Object> out = new ArrayList<>();
             Object profile = profileNew.newInstance(uuid, "pool-camera");
             Object entry = entryNew.newInstance(uuid, profile, false, 0, survival, null, false, 0, null);
-            send(handle, infoNew.newInstance(enumSet(addPlayer), entry));
-            int head = headStep(viewer.getLocation().getYaw());
-            send(handle, addNew.newInstance(id, uuid, eye.getX(), eye.getY() + PARKED, eye.getZ(), 0f, 0f, playerType, 0, vec3Zero,
-                    head * STEP + STEP / 4));
-            sentHead = head;
-            send(handle, dataNew.newInstance(id, List.of(dataCreate.invoke(null, sharedFlags, (byte) 0x20))));
-            List<Object> attrs = new ArrayList<>();
-            attrs.add(attribute(scaleAttr, scale));
-            attrs.add(attribute(cameraAttr, cameraDistance));
-            attrs.add(attribute(speedAttr, 0));
-            send(handle, attributesNew.newInstance(id, attrs));
-            sentDistance = cameraDistance;
+            out.add(infoNew.newInstance(enumSet(addPlayer), entry));
+            spawn(out, eye, headStep(viewer.getLocation().getYaw()), scale, cameraDistance);
+            bundle(handle, out);
             spawned = true;
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
@@ -191,12 +180,55 @@ final class StandIn {
     }
 
     /**
-     * Brings the stand-in to {@code eye}, turned to {@code yaw} and
-     * {@code pitch}, and makes it the viewer's camera: {@code scale} and
+     * How a player camera faces left and right is its head's turn, and the
+     * game sends a head's turn only in 256ths of a circle; a new turn it
+     * eases into over three ticks, and only a new entity takes its turn at
+     * once. So while the shooter aims, the stand-in is made again each time
+     * their view crosses onto another step, and is facing it already when S
+     * goes down.
+     */
+    void face(Location eye, float yaw, double scale, double cameraDistance) {
+        if (!spawned || shown) return;
+        int head = headStep(yaw);
+        if (head == sentHead) return;
+        try {
+            List<Object> out = new ArrayList<>();
+            out.add(removeNew.newInstance((Object) new int[]{id}));
+            spawn(out, eye, head, scale, cameraDistance);
+            bundle(getHandle.invoke(viewer), out);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            fail(e);
+        }
+    }
+
+    /** The stand-in, parked, facing head step {@code head}, invisible and the shooter's size. */
+    private void spawn(List<Object> out, Location eye, int head, double scale, double cameraDistance) throws ReflectiveOperationException {
+        out.add(addNew.newInstance(id, uuid, eye.getX(), eye.getY() + PARKED, eye.getZ(), 0f, 0f, playerType, 0, vec3Zero,
+                head * STEP + STEP / 4));
+        out.add(dataNew.newInstance(id, List.of(dataCreate.invoke(null, sharedFlags, (byte) 0x20))));
+        List<Object> attrs = new ArrayList<>();
+        attrs.add(attribute(scaleAttr, scale));
+        attrs.add(attribute(cameraAttr, cameraDistance));
+        attrs.add(attribute(speedAttr, 0));
+        out.add(attributesNew.newInstance(id, attrs));
+        sentHead = head;
+        sentDistance = cameraDistance;
+    }
+
+    /**
+     * Makes the stand-in the viewer's camera, standing in for eyes at
+     * {@code eye} turned to {@code yaw} and {@code pitch}: {@code scale} and
      * {@code cameraDistance} are the shooter's own, so its third-person view
      * is theirs. From where it waits the move is long, so the client takes it
-     * at once and to the exact turn (a short one it would ease, and a spawn's
-     * turn is rounded to 1.4 degrees).
+     * at once and to the exact tilt. All of it goes in one bundle, which the
+     * client takes between two frames.
+     *
+     * <p>It can face only its head's step, up to 0.7 degrees off the view.
+     * Turned about the eye over the cue ball, the far end of the table would
+     * swing past the cue, so the aim would look off. Instead the camera is
+     * put exactly where the shooter's was, so the turn is all that differs:
+     * the whole picture slides that hair sideways and everything in it, the
+     * cue on the line of the shot and the ball it is aimed at, stays lined up.
      */
     void show(Location eye, float yaw, float pitch, double scale, double cameraDistance) {
         if (shown) hide(null);
@@ -204,18 +236,34 @@ final class StandIn {
         if (!spawned) return;
         try {
             Object handle = getHandle.invoke(viewer);
-            if (Math.abs(cameraDistance - sentDistance) > 1e-6) {
-                send(handle, attributesNew.newInstance(id, List.of(attribute(cameraAttr, cameraDistance))));
+            List<Object> out = new ArrayList<>();
+            int head = headStep(yaw);
+            if (head != sentHead) {
+                out.add(removeNew.newInstance((Object) new int[]{id}));
+                spawn(out, eye, head, scale, cameraDistance);
+            } else if (Math.abs(cameraDistance - sentDistance) > 1e-6) {
+                out.add(attributesNew.newInstance(id, List.of(attribute(cameraAttr, cameraDistance))));
                 sentDistance = cameraDistance;
             }
-            move(handle, eye.getX(), eye.getY() - 1.62 * scale, eye.getZ(), yaw, pitch);
+            float faced = (float) (head * STEP);
+            double d = scale * cameraDistance;
+            double[] want = forward(yaw, pitch), got = forward(faced, pitch);
+            out.add(move(eye.getX() + d * (got[0] - want[0]), eye.getY() + d * (got[1] - want[1]) - 1.62 * scale,
+                    eye.getZ() + d * (got[2] - want[2]), faced, pitch));
             Object marker = markerNew.newInstance(markerType, levelOf.invoke(handle));
             setId.invoke(marker, id);
-            send(handle, cameraNew.newInstance(marker));
+            out.add(cameraNew.newInstance(marker));
+            bundle(handle, out);
             shown = true;
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
         }
+    }
+
+    /** Where a camera turned to (yaw, pitch) looks, as the game works it out. */
+    private static double[] forward(double yaw, double pitch) {
+        double y = Math.toRadians(yaw), p = Math.toRadians(pitch);
+        return new double[]{-Math.sin(y) * Math.cos(p), -Math.sin(p), Math.cos(y) * Math.cos(p)};
     }
 
     /**
@@ -229,9 +277,9 @@ final class StandIn {
         if (view != null) viewer.setRotation(view[0], view[1]);
         try {
             Object handle = getHandle.invoke(viewer);
-            send(handle, cameraNew.newInstance(handle));
             Location at = viewer.getEyeLocation();
-            move(handle, at.getX(), at.getY() + PARKED, at.getZ(), 0f, 0f);
+            bundle(handle, List.of(cameraNew.newInstance(handle),
+                    move(at.getX(), at.getY() + PARKED, at.getZ(), (float) (sentHead * STEP), 0f)));
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
         }
@@ -251,40 +299,19 @@ final class StandIn {
         }
     }
 
-    /**
-     * How a player camera faces left and right is its head's turn, and the
-     * game sends a head's turn only in 256ths of a circle (a move's own turn,
-     * exact as it is, does not reach the head). So the stand-in's head is
-     * kept on the step nearest the shooter's view while they aim: the head
-     * eases onto a new step over three ticks, and this way it is there before
-     * S is pressed. Off by at most 0.7 degrees, the camera turns about the eye
-     * directly over the cue ball, so the cue ball and the cue stay exactly
-     * where they were and only the far end of the table moves, by less.
-     */
-    void face(float yaw) {
-        if (!spawned || shown) return;
-        int head = headStep(yaw);
-        if (head == sentHead) return;
-        try {
-            Object handle = getHandle.invoke(viewer);
-            Object marker = markerNew.newInstance(markerType, levelOf.invoke(handle));
-            setId.invoke(marker, id);
-            send(handle, headNew.newInstance(marker, (byte) head));
-            sentHead = head;
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            fail(e);
-        }
-    }
-
     private static final double STEP = 360.0 / 256;
 
     private static int headStep(float yaw) {
         return (int) Math.round(yaw / STEP) & 0xFF;
     }
 
-    private void move(Object handle, double x, double y, double z, float yaw, float pitch) throws ReflectiveOperationException {
+    private Object move(double x, double y, double z, float yaw, float pitch) throws ReflectiveOperationException {
         Object to = vec3Class.getConstructor(double.class, double.class, double.class).newInstance(x, y, z);
-        send(handle, teleportNew.newInstance(id, moveRotNew.newInstance(to, vec3Zero, yaw, pitch), Set.of(), false));
+        return teleportNew.newInstance(id, moveRotNew.newInstance(to, vec3Zero, yaw, pitch), Set.of(), false);
+    }
+
+    private static void bundle(Object handle, List<Object> packets) throws ReflectiveOperationException {
+        send(handle, bundleNew.newInstance(packets));
     }
 
     private static void fail(Exception e) {

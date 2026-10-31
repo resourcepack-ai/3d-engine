@@ -328,22 +328,33 @@ public final class PoolTable {
         double pz = BED + R + R * height;
         double elev = elevation(c, dx, dy);
         double ax = -dx * Math.cos(elev), ay = -dy * Math.cos(elev), az = Math.sin(elev);
-        Location tip = at(px + ax * gap, py + ay * gap, pz + az * gap);
+        // Stood on the cue ball, as the facing cue is, with the tip set out
+        // from there: changing from one to the other is then only its shape.
+        Location at = at(c.x, c.y, BED + R);
         if (cue == null || !cue.valid()) {
-            cue = engine.spawn(Assets.CUE, tip);
+            cue = engine.spawn(Assets.CUE, at);
             cue.display().setTeleportDuration(1);
-        } else cue.teleport(tip);
+        } else if (cue.display().getLocation().distanceSquared(at) > 1e-8) cue.teleport(at);
         Display d = cue.display();
-        if (d.getBillboard() != Display.Billboard.FIXED) d.setBillboard(Display.Billboard.FIXED);
+        boolean changed = billboard(d, Display.Billboard.FIXED);
         Vector3f axis = dir(ax, ay, az).normalize();
-        transform(d, new Transformation(new Vector3f(), new Quaternionf().rotationTo(new Vector3f(0, 1, 0), axis),
-                new Vector3f(1, 1, 1), new Quaternionf()), 1);
+        Vector3f tip = dir(px - c.x + ax * gap, py - c.y + ay * gap, pz - (BED + R) + az * gap);
+        transform(d, new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), axis),
+                new Vector3f(1, 1, 1), new Quaternionf()), changed ? 0 : mode == Mode.STROKE ? 2 : 1);
     }
 
     /** Whether the shooter is looking down the cue through the orbit camera. */
     private boolean facingCamera() {
         Player p = shooter();
-        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE;
+        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE
+                && mode == Mode.AIM && !(standIn != null && standIn.shown());
+    }
+
+    /** Turns a display to face the camera or not, saying whether it changed: a change is drawn at once, not eased. */
+    private static boolean billboard(Display d, Display.Billboard b) {
+        if (d.getBillboard() == b) return false;
+        d.setBillboard(b);
+        return true;
     }
 
     /**
@@ -365,7 +376,7 @@ public final class PoolTable {
             cue.display().setTeleportDuration(1);
         } else if (cue.display().getLocation().distanceSquared(at) > 1e-8) cue.teleport(at);
         Display d = cue.display();
-        if (d.getBillboard() != Display.Billboard.VERTICAL) d.setBillboard(Display.Billboard.VERTICAL);
+        boolean changed = billboard(d, Display.Billboard.VERTICAL);
         double elev = elevation(c, Math.cos(aim), Math.sin(aim));
         double back = Math.sqrt(Math.max(0, 1 - side * side - height * height));
         Vector3f along = new Vector3f(0, (float) Math.sin(elev), (float) Math.cos(elev));
@@ -375,7 +386,7 @@ public final class PoolTable {
         // reaches the server unevenly (none in one tick, two in the next):
         // easing each step over two ticks smooths that without much delay.
         transform(d, new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), along),
-                new Vector3f(1, 1, 1), new Quaternionf()), mode == Mode.STROKE ? 2 : 1);
+                new Vector3f(1, 1, 1), new Quaternionf()), changed ? 0 : mode == Mode.STROKE ? 2 : 1);
     }
 
     /**
@@ -817,6 +828,7 @@ public final class PoolTable {
         stateTicks++;
         for (ShotCamera c : cameras.values()) c.refresh();
         Player shooter = shooter();
+        if (shotHold) afterShot(shooter);
         switch (state) {
             case PLACE -> placing(shooter);
             case AIM -> aiming(shooter);
@@ -893,7 +905,7 @@ public final class PoolTable {
      * the whole table, and the wheel zooms.
      */
     private void aiming(Player p) {
-        if (p == null) return;
+        if (p == null || shotHold) return;
         if (!holding(p)) {
             if (mode != Mode.AIM) endHold(p);
             hideCue();
@@ -950,7 +962,12 @@ public final class PoolTable {
                         endHold(p);
                         break;
                     }
-                    endHold(p);
+                    // The mouse is still going forward, following through: the
+                    // camera stays still until S comes up.
+                    mode = Mode.AIM;
+                    gap = REST;
+                    testHold = 0;
+                    shotHold = standIn != null && standIn.shown();
                     strikeBack = 0;
                     setState(State.STRIKE);
                     stateTicks = 2;
@@ -993,7 +1010,7 @@ public final class PoolTable {
             // Ready for the stroke before it comes.
             if (mode == Mode.AIM && standIn(p) != null) {
                 standIn.prepare(pivotEye(), ShotCamera.SCALE, distance / ShotCamera.SCALE);
-                standIn.face(yaw);
+                standIn.face(pivotEye(), yaw, ShotCamera.SCALE, distance / ShotCamera.SCALE);
             }
         }
         // Looked at from under the cue's line, the cue would hang across the
@@ -1037,6 +1054,7 @@ public final class PoolTable {
         Location view = p.getLocation();
         heldYaw = lastYaw = view.getYaw();
         heldPitch = lastPitch = view.getPitch();
+        aim = angleFromYaw(heldYaw);
         gap = REST;
         if (standIn(p) != null) standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE);
     }
@@ -1057,6 +1075,16 @@ public final class PoolTable {
         mode = Mode.AIM;
         gap = REST;
         testHold = 0;
+        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
+    }
+
+    /** Whether the camera is still held after the shot, until S comes up. */
+    private boolean shotHold;
+
+    /** S came up after the shot (or the camera went): the camera back to the player as it was. */
+    private void afterShot(Player p) {
+        if (p != null && p.getCurrentInput().isBackward() && standIn != null && standIn.shown()) return;
+        shotHold = false;
         if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
     }
 
