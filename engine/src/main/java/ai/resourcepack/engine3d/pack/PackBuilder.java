@@ -57,9 +57,37 @@ public final class PackBuilder {
         return NAMESPACE + ":" + name + "/" + id;
     }
 
+    /**
+     * Every file under {@code dir} (the {@code pack/} folder), by its path
+     * inside it, in a stable order so the same files make the same pack.
+     */
+    public static java.util.Map<String, byte[]> folder(Path dir, java.util.logging.Logger log) throws IOException {
+        java.util.Map<String, byte[]> out = new java.util.TreeMap<>();
+        if (!Files.isDirectory(dir)) return out;
+        try (var walk = Files.walk(dir)) {
+            for (Path f : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
+                String name = dir.relativize(f).toString().replace(java.io.File.separatorChar, '/');
+                if (name.equals("pack.mcmeta") || name.equals("pack.png")) {
+                    log.warning("pack/" + name + " is left out: the engine writes its own.");
+                    continue;
+                }
+                out.put(name, Files.readAllBytes(f));
+            }
+        }
+        return out;
+    }
+
     public static Pack build(Path jar, List<Entry> models, java.util.Map<String, byte[]> extras, int[] format, String description) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+        java.util.Set<String> written = new java.util.HashSet<>();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes) {
+            @Override
+            public void putNextEntry(ZipEntry e) throws IOException {
+                // The engine's own files go in first; an extra at the same path is left out.
+                if (!written.add(e.getName())) throw new Duplicate();
+                super.putNextEntry(e);
+            }
+        }) {
             put(zip, "pack.mcmeta", ("{\"pack\":{\"min_format\":[" + format[0] + "," + format[1] + "],\"max_format\":[" + format[0] + "," + format[1]
                     + "],\"description\":" + quote(description) + "}}").getBytes(StandardCharsets.UTF_8));
             try (JarFile jf = new JarFile(jar.toFile())) {
@@ -72,7 +100,7 @@ public final class PackBuilder {
                     }
                 }
             }
-            for (var e : extras.entrySet()) put(zip, e.getKey(), e.getValue());
+            List<java.util.Map.Entry<String, byte[]>> later = new java.util.ArrayList<>(extras.entrySet());
             for (Entry m : models) {
                 for (String id : m.manifest().models.keySet()) {
                     String path = m.name() + "/" + id;
@@ -98,6 +126,13 @@ public final class PackBuilder {
                     put(zip, "assets/" + NAMESPACE + "/items/" + path + ".json", item.getBytes(StandardCharsets.UTF_8));
                 }
             }
+            for (var e : later) {
+                try {
+                    put(zip, e.getKey(), e.getValue());
+                } catch (Duplicate d) {
+                    // a path the engine has already written
+                }
+            }
         }
         byte[] zip = bytes.toByteArray();
         try {
@@ -107,6 +142,13 @@ public final class PackBuilder {
             return new Pack(zip, sha1, hex.toString());
         } catch (NoSuchAlgorithmException e) {
             throw new IOException(e);
+        }
+    }
+
+    /** An entry at a path already in the zip. */
+    private static final class Duplicate extends IOException {
+        Duplicate() {
+            super(null, null);
         }
     }
 

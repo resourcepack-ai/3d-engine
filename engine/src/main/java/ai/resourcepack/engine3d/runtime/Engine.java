@@ -86,6 +86,7 @@ public final class Engine implements Listener {
     private final List<Runnable> readyTasks = new ArrayList<>();
     private boolean ready, loading;
     private List<String> lastErrors = List.of();
+    private final Path packFolder;
 
     public Engine(JavaPlugin plugin, Path jar) {
         this.plugin = plugin;
@@ -93,6 +94,7 @@ public final class Engine implements Listener {
         this.folder = plugin.getDataFolder().toPath().resolve("models");
         this.registry = new Registry(folder, plugin.getDataFolder().toPath().resolve("cache"), plugin.getLogger());
         this.effects = new Effects(plugin.getDataFolder().toPath().resolve("effects"), plugin.getLogger());
+        this.packFolder = plugin.getDataFolder().toPath().resolve("pack");
     }
 
     public void enable() {
@@ -175,7 +177,9 @@ public final class Engine implements Listener {
                 FileConfiguration c = plugin.getConfig();
                 List<Integer> f = c.getIntegerList("pack.format");
                 int[] format = f.size() >= 2 ? new int[]{f.get(0), f.get(1)} : new int[]{97, 1};
-                PackBuilder.Pack built = PackBuilder.build(jar, loaded.entries(), linked.files(), format, c.getString("pack.description", "3D Engine models"));
+                Map<String, byte[]> extras = new LinkedHashMap<>(linked.files());
+                extras.putAll(PackBuilder.folder(packFolder, plugin.getLogger()));
+                PackBuilder.Pack built = PackBuilder.build(jar, loaded.entries(), extras, format, c.getString("pack.description", "3D Engine models"));
                 Files.write(plugin.getDataFolder().toPath().resolve("pack.zip"), built.zip());
                 Bukkit.getScheduler().runTask(plugin, () -> finishLoad(loaded, linked, built, to));
             } catch (Exception e) {
@@ -434,6 +438,10 @@ public final class Engine implements Listener {
 
     public Path modelsFolder() {
         return folder;
+    }
+
+    public Path packFolder() {
+        return packFolder;
     }
 
     PackBuilder.Pack pack() {

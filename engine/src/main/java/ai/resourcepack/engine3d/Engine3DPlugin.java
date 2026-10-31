@@ -172,4 +172,9 @@ public final class Engine3DPlugin extends JavaPlugin implements Engine3D {
     public Path modelsFolder() {
         return runtime.modelsFolder();
     }
+
+    @Override
+    public Path packFolder() {
+        return runtime.packFolder();
+    }
 }

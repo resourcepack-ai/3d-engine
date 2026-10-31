@@ -98,6 +98,15 @@ public interface Engine3D {
     /** Where model files go. Another plugin may copy its own models in before the first tick. */
     Path modelsFolder();
 
+    /**
+     * Files here go into the pack as they are, at the same path ({@code
+     * assets/<namespace>/sounds.json}, a font, a texture), on the next load.
+     * For sounds, fonts and item models a plugin needs beside its 3D models:
+     * use a namespace of your own. A file at a path the engine already writes
+     * (its shaders, its models) is left out.
+     */
+    Path packFolder();
+
     /** Internal: the running engine. */
     final class Holder {
         static volatile Engine3D engine;
