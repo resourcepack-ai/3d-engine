@@ -1,6 +1,7 @@
 package ai.resourcepack.pool3d.game;
 
 import org.bukkit.Location;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import java.lang.reflect.Constructor;
@@ -44,9 +45,9 @@ import java.util.logging.Logger;
 final class StandIn {
 
     private static boolean looked, works;
-    private static Method getHandle, send, levelOf, setId, dataCreate;
+    private static Method getHandle, send, levelOf, setId, dataCreate, pathOf;
     private static Field connection;
-    private static Constructor<?> bundleNew, profileNew, entryNew, infoNew, addNew, teleportNew, moveRotNew, attrNew, attributesNew,
+    private static Constructor<?> syncNew, bundleNew, profileNew, entryNew, infoNew, addNew, teleportNew, moveRotNew, attrNew, attributesNew,
             dataNew, cameraNew, markerNew, removeNew, infoRemoveNew;
     private static Object addPlayer, survival, playerType, markerType, vec3Zero, sharedFlags, scaleAttr, cameraAttr, speedAttr;
     private static Class<?> vec3Class;
@@ -113,6 +114,10 @@ final class StandIn {
             dataNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket").getConstructor(int.class, List.class);
 
             cameraNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundSetCameraPacket").getConstructor(entity);
+            Class<?> path = cl.loadClass("net.minecraft.world.entity.PositionPath");
+            pathOf = path.getMethod("of", vec3Class);
+            syncNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket")
+                    .getConstructor(int.class, path, float.class, float.class, boolean.class);
             bundleNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundBundlePacket").getConstructor(Iterable.class);
             markerNew = cl.loadClass("net.minecraft.world.entity.Marker").getConstructor(entityType, level);
             removeNew = cl.loadClass("net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket").getConstructor(int[].class);
@@ -229,13 +234,14 @@ final class StandIn {
      * put exactly where the shooter's was, so the turn is all that differs:
      * the whole picture slides that hair sideways and everything in it, the
      * cue on the line of the shot and the ball it is aimed at, stays lined up.
-     * What it returns lets the table take that slide out too: the turn
-     * (degrees of yaw) and the point it is about (world x, z), or null.
+     * And {@code drawn}, the table and all that is on it, is turned the same
+     * hair about the camera on this client alone, in the same bundle, so the
+     * table does not slide at all: only the world behind it can.
      */
-    double[] show(Location eye, float yaw, float pitch, double scale, double cameraDistance) {
-        if (shown) hide(null);
+    void show(Location eye, float yaw, float pitch, double scale, double cameraDistance, List<? extends Entity> drawn) {
+        if (shown) hide(null, List.of());
         prepare(eye, scale, cameraDistance);
-        if (!spawned) return null;
+        if (!spawned) return;
         try {
             Object handle = getHandle.invoke(viewer);
             List<Object> out = new ArrayList<>();
@@ -252,16 +258,34 @@ final class StandIn {
             double[] want = forward(yaw, pitch), got = forward(faced, pitch);
             out.add(move(eye.getX() + d * (got[0] - want[0]), eye.getY() + d * (got[1] - want[1]) - 1.62 * scale,
                     eye.getZ() + d * (got[2] - want[2]), faced, pitch));
+            double turn = Math.toRadians(Math.IEEEremainder(faced - yaw, 360));
+            double cx = eye.getX() - d * want[0], cz = eye.getZ() - d * want[2];
+            double cos = Math.cos(turn), sin = Math.sin(turn);
+            for (Entity e : drawn) {
+                Location l = e.getLocation();
+                double dx = l.getX() - cx, dz = l.getZ() - cz;
+                out.add(sync(e.getEntityId(), cx + dx * cos - dz * sin, l.getY(), cz + dx * sin + dz * cos,
+                        (float) (l.getYaw() + Math.toDegrees(turn)), l.getPitch()));
+            }
             Object marker = markerNew.newInstance(markerType, levelOf.invoke(handle));
             setId.invoke(marker, id);
             out.add(cameraNew.newInstance(marker));
             bundle(handle, out);
             shown = true;
-            return new double[]{Math.IEEEremainder(faced - yaw, 360), eye.getX() - d * want[0], eye.getZ() - d * want[2]};
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
-            return null;
         }
+    }
+
+    /**
+     * Where an entity is on this client, at once. A sync and not a teleport,
+     * because a sync also moves the base the server's later small moves are
+     * counted from (one comes every three seconds, moved or not); after a
+     * teleport, those would put it straight back.
+     */
+    private static Object sync(int entity, double x, double y, double z, float yaw, float pitch) throws ReflectiveOperationException {
+        Object at = vec3Class.getConstructor(double.class, double.class, double.class).newInstance(x, y, z);
+        return syncNew.newInstance(entity, pathOf.invoke(null, at), yaw, pitch, false);
     }
 
     /** Where a camera turned to (yaw, pitch) looks, as the game works it out. */
@@ -275,15 +299,22 @@ final class StandIn {
      * {@code view} is given ({yaw, pitch}), the viewer's own view is put
      * there first, so the camera comes back to exactly the picture it left.
      */
-    void hide(float[] view) {
+    void hide(float[] view, List<? extends Entity> drawn) {
         if (!shown) return;
         shown = false;
         if (view != null) viewer.setRotation(view[0], view[1]);
         try {
             Object handle = getHandle.invoke(viewer);
             Location at = viewer.getEyeLocation();
-            bundle(handle, List.of(cameraNew.newInstance(handle),
-                    move(at.getX(), at.getY() + PARKED, at.getZ(), (float) (sentHead * STEP), 0f)));
+            List<Object> out = new ArrayList<>();
+            out.add(cameraNew.newInstance(handle));
+            out.add(move(at.getX(), at.getY() + PARKED, at.getZ(), (float) (sentHead * STEP), 0f));
+            // The table back where it really is.
+            for (Entity e : drawn) {
+                Location l = e.getLocation();
+                out.add(sync(e.getEntityId(), l.getX(), l.getY(), l.getZ(), l.getYaw(), l.getPitch()));
+            }
+            bundle(handle, out);
         } catch (ReflectiveOperationException | RuntimeException e) {
             fail(e);
         }
@@ -291,7 +322,7 @@ final class StandIn {
 
     /** Takes the stand-in off the viewer's client altogether. */
     void remove() {
-        if (shown) hide(null);
+        if (shown) hide(null, List.of());
         if (!spawned) return;
         spawned = false;
         try {

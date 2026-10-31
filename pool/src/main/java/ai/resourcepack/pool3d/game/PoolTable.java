@@ -152,68 +152,34 @@ public final class PoolTable {
 
     // ---- frames ---------------------------------------------------------------------------
 
-    /**
-     * A point in the table's frame, {@code h} above the floor, in the world,
-     * where it is drawn: turned by {@link #twist} while the still camera is up.
-     */
+    /** A point in the table's frame, {@code h} above the floor, in the world. */
     Location at(double x, double y, double h) {
-        Location l = raw(x, y, h);
-        if (twist == 0) return l;
-        double dx = l.getX() - twistX, dz = l.getZ() - twistZ;
-        l.setX(twistX + dx * twistCos - dz * twistSin);
-        l.setZ(twistZ + dx * twistSin + dz * twistCos);
-        return l;
-    }
-
-    /** A point in the table's frame in the world, as it really is: for the player, the seat and the camera. */
-    Location raw(double x, double y, double h) {
         return alongZ ? new Location(world, cx + y, cy + h, cz + x) : new Location(world, cx + x, cy + h, cz - y);
     }
 
-    /** A direction in the table's frame (z up) as a world vector, as it is drawn. */
+    /** A direction in the table's frame (z up) as a world vector. */
     Vector3f dir(double x, double y, double z) {
-        Vector3f v = rawDir(x, y, z);
-        if (twist == 0) return v;
-        float wx = v.x, wz = v.z;
-        v.x = (float) (wx * twistCos - wz * twistSin);
-        v.z = (float) (wx * twistSin + wz * twistCos);
-        return v;
-    }
-
-    private Vector3f rawDir(double x, double y, double z) {
         return alongZ ? new Vector3f((float) y, (float) z, (float) x) : new Vector3f((float) x, (float) z, (float) -y);
     }
 
-    /**
-     * The still camera (see {@link StandIn}) can face only 256 ways round,
-     * so it looks up to 0.7 degrees off the shooter's own view: everything
-     * the table draws is turned with it, by {@code twist} radians of yaw
-     * about where the camera is ({@code twistX}, {@code twistZ}), so the
-     * table, the balls and the cue stay exactly where they were on screen.
-     */
-    private double twist, twistX, twistZ, twistCos = 1, twistSin;
-    /** The twist the balls and the table were last drawn with. */
-    private double drawnTwist;
-
-    private void twist(double[] t) {
-        twist = t == null ? 0 : Math.toRadians(t[0]);
-        if (t != null) {
-            twistX = t[1];
-            twistZ = t[2];
-        }
-        twistCos = Math.cos(twist);
-        twistSin = Math.sin(twist);
-        if (twist == drawnTwist) return;
-        drawnTwist = twist;
-        if (body != null && body.valid()) body.teleport(bodyAt());
-        for (BallView v : views.values()) v.lastX = Double.NaN;
-    }
-
-    /** Where the table's model stands, as drawn. */
+    /** Where the table's model stands. */
     private Location bodyAt() {
         Location at = at(0, 0, 0);
-        at.setYaw((float) ((alongZ ? 90 : 0) + Math.toDegrees(twist)));
+        at.setYaw(alongZ ? 90 : 0);
         return at;
+    }
+
+    /** The table and everything drawn on it, which the still camera turns with it on the shooter's screen. */
+    private List<org.bukkit.entity.Entity> drawn() {
+        List<org.bukkit.entity.Entity> out = new ArrayList<>();
+        if (body != null && body.valid()) out.add(body.display());
+        for (BallView v : views.values()) {
+            if (v.ball != null && v.ball.valid()) out.add(v.ball.display());
+            if (v.gloss != null && v.gloss.valid()) out.add(v.gloss.display());
+        }
+        if (cue != null && cue.valid()) out.add(cue.display());
+        for (ItemDisplay d : guide) if (d != null && d.isValid()) out.add(d);
+        return out;
     }
 
     /** World (X, Z) in the table's frame. */
@@ -409,8 +375,7 @@ public final class PoolTable {
     /** Whether the shooter is looking down the cue through the orbit camera. */
     private boolean facingCamera() {
         Player p = shooter();
-        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE
-                && mode == Mode.AIM && !(standIn != null && standIn.shown());
+        return p != null && cameras.containsKey(p.getUniqueId()) && !overview && state != State.PLACE;
     }
 
     /** Turns a display to face the camera or not, saying whether it changed: a change is drawn at once, not eased. */
@@ -515,10 +480,19 @@ public final class PoolTable {
         Ball o = sim.ball(g.hit());
         flat(0, g.gx(), g.gy(), dx, dy, 0, 2.15 * R, 0xFFFFFF);
         double full = Math.max(0, dx * g.ox() + dy * g.oy());
-        flat(1, o.x, o.y, g.ox(), g.oy(), 0.16 + 0.22 * full, 2 * R, shade(o.number));
+        flat(1, o.x, o.y, g.ox(), g.oy(), Math.min(0.16 + 0.22 * full, toCushion(o.x, o.y, g.ox(), g.oy()) + R), 2 * R, shade(o.number));
         double thin = Math.sqrt(Math.max(0, 1 - full * full));
         if (g.tx() == 0 && g.ty() == 0 || thin < 0.05) flat(2, 0, 0, 1, 0, -1, 0, 0);
-        else flat(2, g.gx() + g.tx() * R, g.gy() + g.ty() * R, g.tx(), g.ty(), 0.10 + 0.20 * thin, 1.5 * R, 0xFFFFFF);
+        else flat(2, g.gx() + g.tx() * R, g.gy() + g.ty() * R, g.tx(), g.ty(),
+                Math.max(0, Math.min(0.10 + 0.20 * thin, toCushion(g.gx(), g.gy(), g.tx(), g.ty()))), 1.5 * R, 0xFFFFFF);
+    }
+
+    /** How far a ball's centre at (x, y) can go along (dx, dy) before the ball meets a cushion. */
+    private static double toCushion(double x, double y, double dx, double dy) {
+        double lx = HALF_LENGTH - R, ly = HALF_WIDTH - R;
+        double tx = Math.abs(dx) < 1e-9 ? Double.MAX_VALUE : ((dx > 0 ? lx : -lx) - x) / dx;
+        double ty = Math.abs(dy) < 1e-9 ? Double.MAX_VALUE : ((dy > 0 ? ly : -ly) - y) / dy;
+        return Math.max(0, Math.min(tx, ty));
     }
 
     /** The colour of a ball's band: its own, a little deepened, as a shadow on the cloth. */
@@ -535,13 +509,15 @@ public final class PoolTable {
      * square {@code width} across centred there; below 0, nothing.
      */
     private void flat(int i, double x, double y, double dx, double dy, double len, double width, int rgb) {
-        Location at = at(x, y, BED + 0.0012 + i * 0.0003);
+        // Well clear of the cloth: the shot camera's near plane is very
+        // close, so depth is coarse, and nearer the two would fight.
+        Location at = at(x, y, BED + 0.004 + i * 0.0015);
         ItemDisplay d = guide[i];
         if (d == null || !d.isValid()) {
             d = world.spawn(at, ItemDisplay.class, e -> {
                 e.setPersistent(false);
                 e.setBrightness(new Display.Brightness(15, 15));
-                e.setTeleportDuration(1);
+                e.setTeleportDuration(0);
                 e.addScoreboardTag("pool3d");
             });
             guide[i] = d;
@@ -696,7 +672,6 @@ public final class PoolTable {
         if (standIn != null && standIn.viewer().getUniqueId().equals(u)) {
             standIn.remove();
             standIn = null;
-            twist(null);
             mode = Mode.AIM;
         }
         ShotCamera c = cameras.remove(u);
@@ -717,8 +692,8 @@ public final class PoolTable {
             if (ax - Math.abs(x) < ay - Math.abs(y)) x = Math.copySign(ax, x == 0 ? 1 : x);
             else y = Math.copySign(ay, y == 0 ? 1 : y);
         }
-        Location l = raw(x, y, 0);
-        Location c = raw(0, 0, 0);
+        Location l = at(x, y, 0);
+        Location c = at(0, 0, 0);
         l.setDirection(c.toVector().subtract(l.toVector()));
         return l;
     }
@@ -734,7 +709,7 @@ public final class PoolTable {
 
     /** The world yaw (degrees) that looks along {@code angle} in the table's frame. */
     float yawOf(double angle) {
-        Vector3f w = rawDir(Math.cos(angle), Math.sin(angle), 0);
+        Vector3f w = dir(Math.cos(angle), Math.sin(angle), 0);
         return (float) Math.toDegrees(Math.atan2(-w.x, w.z));
     }
 
@@ -748,7 +723,7 @@ public final class PoolTable {
      */
     private Location pivotEye() {
         double below = Math.atan(2 * BALL_BELOW * Math.tan(Math.toRadians(35 * zoom)));
-        return raw(pivotX, pivotY, BED + R + distance * Math.tan(below));
+        return at(pivotX, pivotY, BED + R + distance * Math.tan(below));
     }
 
     /**
@@ -767,7 +742,7 @@ public final class PoolTable {
 
     /** The overview's eyes: on the cloth in the middle, the camera {@link #OVERVIEW} straight up from them. */
     private Location overviewEye() {
-        return raw(0, 0, BED + 0.01);
+        return at(0, 0, BED + 0.01);
     }
 
     /** Moves {@code cam} to {@code eye}: quickly when it is near, gliding when it has far to go. */
@@ -1106,7 +1081,7 @@ public final class PoolTable {
         double shown = mode == Mode.STROKE ? Math.max(0, Math.min(BRIDGE, gap + gapSpeed)) : REST;
         if (mode == Mode.STROKE || overview || camUp > cueUp + 0.02) drawCue(shown);
         else hideCue();
-        if (tables.guide && mode != Mode.STROKE && !overview) drawGuide();
+        if (tables.guide && !overview) drawGuide();
         else hideGuide();
     }
 
@@ -1138,7 +1113,7 @@ public final class PoolTable {
         heldPitch = lastPitch = view.getPitch();
         aim = angleFromYaw(heldYaw);
         gap = REST;
-        if (standIn(p) != null) twist(standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE));
+        if (standIn(p) != null) standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE, drawn());
     }
 
     /** The shooter's stand-in, where the server can make one. */
@@ -1157,8 +1132,7 @@ public final class PoolTable {
         mode = Mode.AIM;
         gap = REST;
         testHold = 0;
-        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
-        twist(null);
+        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch}, drawn());
     }
 
     /** Whether the camera is still held after the shot, until S comes up. */
@@ -1168,8 +1142,7 @@ public final class PoolTable {
     private void afterShot(Player p) {
         if (p != null && p.getCurrentInput().isBackward() && standIn != null && standIn.shown()) return;
         shotHold = false;
-        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
-        twist(null);
+        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch}, drawn());
     }
 
     private float overviewYaw, overviewPitch;
