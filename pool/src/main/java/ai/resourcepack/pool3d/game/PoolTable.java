@@ -53,15 +53,18 @@ public final class PoolTable {
     /** Where the tip rests behind the cue ball while aiming (Shooterspool's {@code distTipCueball}), and the most it can be drawn back. */
     static final double REST = 0.003, BRIDGE = 0.34;
     /**
-     * The shot camera, as Shooterspool's own defaults have it (its player
-     * profile: {@code initialHeadToBallDistance} 1.2, {@code fov} 30): the
-     * eye 1.2 m from the cue ball through a 30 degree view, so the cue runs
-     * long up the middle of the screen and the table looks flat.
-     * {@link #ZOOM} is that view as a share of Minecraft's 70 degrees; the
-     * wheel narrows or widens it.
+     * The shot camera, after Shooterspool's own defaults (its player
+     * profile: {@code initialHeadToBallDistance} 1.2, {@code fov} 30): a
+     * long lens close behind the cue ball, so the cue runs long up the middle
+     * of the screen and the table looks flat. The lens is half the player's
+     * own view (35 degrees at Minecraft's 70), the narrowest the still stroke
+     * camera ({@link StandIn}) can match, and the eye is brought in to
+     * {@link #DISTANCE} so the cue ball is the size it is at 1.2 m through
+     * 30 degrees. The wheel moves the eye in and out.
      */
-    static final double DISTANCE = 1.2;
-    static final double ZOOM = 30 / 70.0, ZOOM_MIN = 0.15, ZOOM_MAX = 0.9;
+    static final double ZOOM = 0.5;
+    static final double DISTANCE = 1.2 * Math.tan(Math.toRadians(15)) / Math.tan(Math.toRadians(17.5));
+    static final double DISTANCE_MIN = 0.4, DISTANCE_MAX = 2.0;
     /** The cue ball sits this share of the screen's height below its middle, whatever the tilt. */
     static final double BALL_BELOW = 0.116;
     /** The tilt a new shot starts at: the eye 9 degrees up from the cue ball, as in Shooterspool. */
@@ -109,7 +112,11 @@ public final class PoolTable {
     /** Shooters who got up (sneak) to walk round the table; a right-click sits them down again. */
     private final java.util.Set<UUID> standing = new java.util.HashSet<>();
     Mode mode = Mode.AIM;
-    double zoom = ZOOM;
+    final double zoom = ZOOM;
+    double distance = DISTANCE;
+    /** The still camera the shooter looks through while S or W is held, where the server can manage it. */
+    private StandIn standIn;
+    private float lastYaw, lastPitch;
     boolean overview;
     private boolean jumpHeld;
     /** The view when S or W went down, given back when it comes up. */
@@ -585,6 +592,10 @@ public final class PoolTable {
     }
 
     private void closeCamera(UUID u) {
+        if (standIn != null && standIn.viewer().getUniqueId().equals(u)) {
+            standIn.hide(null);
+            mode = Mode.AIM;
+        }
         ShotCamera c = cameras.remove(u);
         if (c != null) c.close(standSpot(c.eye()));
     }
@@ -630,7 +641,7 @@ public final class PoolTable {
      */
     private Location pivotEye() {
         double below = Math.atan(2 * BALL_BELOW * Math.tan(Math.toRadians(35 * zoom)));
-        return at(pivotX, pivotY, BED + R + DISTANCE * Math.tan(below));
+        return at(pivotX, pivotY, BED + R + distance * Math.tan(below));
     }
 
     /**
@@ -639,7 +650,7 @@ public final class PoolTable {
      */
     private float lowestPitch() {
         double eyeOverCloth = pivotEye().getY() - (cy + BED);
-        return (float) -Math.toDegrees(Math.asin(Math.min(1, Math.max(0, eyeOverCloth - 0.025) / DISTANCE)));
+        return (float) -Math.toDegrees(Math.asin(Math.min(1, Math.max(0, eyeOverCloth - 0.025) / distance)));
     }
 
     /** The orbit's angle in the table's frame from the way the player faces. */
@@ -694,9 +705,10 @@ public final class PoolTable {
 
     // ---- input --------------------------------------------------------------------------------
 
-    /** The mouse wheel: zooms the shot camera in and out. */
+    /** The mouse wheel: brings the shot camera in and takes it out. */
     void scroll(Player p, int delta) {
-        zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * (delta > 0 ? 1 / 1.12 : 1.12)));
+        if (mode != Mode.AIM) return;
+        distance = Math.max(DISTANCE_MIN, Math.min(DISTANCE_MAX, distance * (delta > 0 ? 1 / 1.1 : 1.1)));
     }
 
     void centreSpin(Player p) {
@@ -906,8 +918,7 @@ public final class PoolTable {
                         endHold(p);
                         break;
                     }
-                    mode = Mode.AIM;
-                    gap = REST;
+                    endHold(p);
                     strikeBack = 0;
                     setState(State.STRIKE);
                     stateTicks = 2;
@@ -941,14 +952,14 @@ public final class PoolTable {
             cam.lens(OVERVIEW, 1);
             glide(cam, overviewEye());
         } else {
-            cam.lens(DISTANCE, zoom);
+            cam.lens(distance, zoom);
             glide(cam, pivotEye());
         }
         // Looked at from under the cue's line, the cue would hang across the
         // view from above: it is put away until the camera is over it again.
-        double camUp = Math.sin(Math.toRadians(mode == Mode.AIM ? pitch : heldPitch)) * DISTANCE
+        double camUp = Math.sin(Math.toRadians(mode == Mode.AIM ? pitch : heldPitch)) * distance
                 + (pivotEye().getY() - (cy + BED + R));
-        double cueUp = Math.tan(elevation(c, Math.cos(aim), Math.sin(aim))) * DISTANCE;
+        double cueUp = Math.tan(elevation(c, Math.cos(aim), Math.sin(aim))) * distance;
         if (mode == Mode.STROKE || overview || camUp > cueUp + 0.02) drawCue(mode == Mode.STROKE ? gap : REST);
         else hideCue();
         if (tables.guide && mode != Mode.STROKE && !overview) drawGuide();
@@ -957,10 +968,18 @@ public final class PoolTable {
 
     /**
      * While S or W is held the mouse works the cue, and the view must not
-     * move: what it turned since the last tick (yaw, pitch, degrees) is read
-     * off and the view is put back where it was held.
+     * move: what it turned since the last tick (yaw, pitch, degrees). With
+     * the stand-in up the camera is not the player's, so their view is free
+     * to turn; without it, the view is put back where it was held, which
+     * shakes a little.
      */
     private double[] held(Player p, float yaw, float pitch) {
+        if (standIn != null && standIn.shown()) {
+            double dy = Math.IEEEremainder(yaw - lastYaw, 360), dp = pitch - lastPitch;
+            lastYaw = yaw;
+            lastPitch = pitch;
+            return new double[]{dy, dp};
+        }
         double dy = Math.IEEEremainder(yaw - heldYaw, 360), dp = pitch - heldPitch;
         if (dy != 0 || dp != 0) p.setRotation(heldYaw, heldPitch);
         return new double[]{dy, dp};
@@ -970,15 +989,20 @@ public final class PoolTable {
     private void startHold(Player p, Mode m) {
         mode = m;
         Location view = p.getLocation();
-        heldYaw = view.getYaw();
-        heldPitch = view.getPitch();
+        heldYaw = lastYaw = view.getYaw();
+        heldPitch = lastPitch = view.getPitch();
         gap = REST;
+        if (StandIn.available(tables.plugin.getLogger())) {
+            if (standIn == null || standIn.viewer() != p) standIn = new StandIn(p);
+            standIn.show(pivotEye(), heldYaw, heldPitch, ShotCamera.SCALE, distance / ShotCamera.SCALE);
+        }
     }
 
-    /** S or W came up without a shot: the cue goes back to rest. */
+    /** S or W came up (or the shot went): the cue goes back to rest, the camera back to the player as it was. */
     private void endHold(Player p) {
         mode = Mode.AIM;
         gap = REST;
+        if (standIn != null) standIn.hide(new float[]{heldYaw, heldPitch});
     }
 
     private float overviewYaw, overviewPitch;
