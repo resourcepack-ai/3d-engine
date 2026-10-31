@@ -113,8 +113,8 @@ seated riders. Edit it and run `/3d reload` and it takes effect, except for
 the server starts (the reload says so when one of them has changed). Two
 switches concern what the plugin connects to:
 
-- **`update-check: true`** asks SpigotMC every six hours whether a newer 3D
-  Engine is out, and if so tells the console and anybody with `3dengine.update`.
+- **`update-check: true`** asks SpigotMC as the server starts whether a newer
+  3D Engine is out, and if so tells the console and anybody with `3dengine.update`.
   Set it to `false` to turn that off.
 - **`telemetry: true`** is an anonymous usage count: every 30 seconds a random
   id the plugin made up the first time it started, how many players are online,
