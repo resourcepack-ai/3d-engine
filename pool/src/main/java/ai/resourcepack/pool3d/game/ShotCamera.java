@@ -59,6 +59,8 @@ final class ShotCamera {
                 feet.setYaw(player.getLocation().getYaw());
                 feet.setPitch(player.getLocation().getPitch());
                 player.teleport(feet);
+                // Flying widens the view by a tenth, on top of the narrowing.
+                if (player.isFlying()) player.setFlying(false);
                 seat = s.getWorld().spawn(s, ItemDisplay.class, d -> {
                     d.setPersistent(false);
                     d.addScoreboardTag("pool3d");
@@ -91,11 +93,42 @@ final class ShotCamera {
                 s = at.clone().subtract(0, eyeAbove, 0);
             }
         }
+        PotionEffect hidden = player.getPotionEffect(PotionEffectType.INVISIBILITY);
+        if (hidden == null || hidden.getDuration() < 40) hide(true);
         if (eye != null && eye.distanceSquared(at) < 1e-10) return;
         eye = at.clone();
         int duration = Math.max(1, Math.min(59, ticks));
         if (seat.getTeleportDuration() != duration) seat.setTeleportDuration(duration);
         moveWithRider(seat, s);
+    }
+
+    private double fov = 1;
+
+    /**
+     * Narrows the player's view to {@code m} of their own field of view (a
+     * telephoto at 0.34: Shooterspool's view down the cue is about 24
+     * degrees). A server cannot set a player's field of view, but the client
+     * scales it by their speed over their walking speed, as sprinting
+     * widens it; a negative walking speed turns that the other way. It is
+     * clamped to between 0.1 and 1.5 there, eased over a few frames, and
+     * only felt with the FOV Effects option on (it is, by default).
+     *
+     * <p>Only between 0.12 and 0.4, or 1 (their own): nearer a half, the
+     * walking speed it takes is beyond what the game allows.
+     */
+    void fov(double m) {
+        m = m >= 0.7 ? 1 : Math.max(0.12, Math.min(0.4, m));
+        if (Math.abs(m - fov) < 1e-4) return;
+        fov = m;
+        if (m == 1) {
+            player.setWalkSpeed(0.2f);
+            return;
+        }
+        var attr = player.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED);
+        double speed = attr == null ? 0.1 : attr.getValue();
+        // The client divides by half of Bukkit's walking speed.
+        float walk = (float) (2 * speed / (2 * m - 1));
+        player.setWalkSpeed(Math.max(-1f, Math.min(1f, walk)));
     }
 
     /** Where the eyes were last put. */
@@ -122,6 +155,8 @@ final class ShotCamera {
             moving = false;
         }
         hide(false);
+        if (fov != 1) player.setWalkSpeed(0.2f);
+        fov = 1;
     }
 
     /**
@@ -129,7 +164,9 @@ final class ShotCamera {
      * they should be: nobody else needs to see it.
      */
     private void hide(boolean on) {
-        if (on) player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, PotionEffect.INFINITE_DURATION, 0, false, false, false));
+        // A few seconds at a time, renewed while seated, so that it wears off
+        // by itself if the server stops with somebody in the seat.
+        if (on) player.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 100, 0, false, false, false));
         else player.removePotionEffect(PotionEffectType.INVISIBILITY);
     }
 

@@ -374,6 +374,18 @@ public final class Tables implements Listener {
         leave(e.getPlayer());
     }
 
+    /**
+     * The shot camera narrows the view with a negative walking speed, which
+     * is saved with the player: if the server stopped mid-shot, they would
+     * come back walking backwards. Put right on the way in.
+     */
+    @EventHandler
+    public void onJoin(org.bukkit.event.player.PlayerJoinEvent e) {
+        Player p = e.getPlayer();
+        if (p.getWalkSpeed() < 0) p.setWalkSpeed(0.2f);
+        if (p.isInsideVehicle() && p.getVehicle().getScoreboardTags().contains("pool3d")) p.leaveVehicle();
+    }
+
     public List<String> ids() {
         return new ArrayList<>(tables.keySet());
     }
