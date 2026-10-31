@@ -114,6 +114,8 @@ public final class PoolTable {
     Mode mode = Mode.AIM;
     final double zoom = ZOOM;
     double distance = DISTANCE;
+    /** Where the wheel last sent the eye: {@link #distance} glides there. */
+    private double distanceTo = DISTANCE;
     /** The still camera the shooter looks through while S or W is held, where the server can manage it. */
     private StandIn standIn;
     private float lastYaw, lastPitch;
@@ -801,7 +803,7 @@ public final class PoolTable {
     /** The mouse wheel: brings the shot camera in and takes it out. */
     void scroll(Player p, int delta) {
         if (mode != Mode.AIM) return;
-        distance = Math.max(DISTANCE_MIN, Math.min(DISTANCE_MAX, distance * (delta > 0 ? 1 / 1.1 : 1.1)));
+        distanceTo = Math.max(DISTANCE_MIN, Math.min(DISTANCE_MAX, distanceTo * (delta > 0 ? 1 / 1.08 : 1.08)));
     }
 
     void centreSpin(Player p) {
@@ -1066,6 +1068,13 @@ public final class PoolTable {
             cam.lens(OVERVIEW, 1);
             glide(cam, overviewEye());
         } else {
+            // The wheel's steps are taken a share at a time, so a zoom
+            // glides and a fast turn of the wheel runs on smoothly. Not while
+            // the still camera is up: it was made for one distance.
+            if (mode == Mode.AIM) {
+                distance += (distanceTo - distance) * 0.3;
+                if (Math.abs(distanceTo - distance) < 1e-3) distance = distanceTo;
+            }
             cam.lens(distance, zoom);
             glide(cam, pivotEye());
             // Ready for the stroke before it comes.
