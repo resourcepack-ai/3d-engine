@@ -101,8 +101,7 @@ final class ShotCamera {
                 s = at.clone().subtract(0, eyeAbove, 0);
             }
         }
-        PotionEffect hidden = player.getPotionEffect(PotionEffectType.INVISIBILITY);
-        if (hidden == null || hidden.getDuration() < 40) hide(true);
+        refresh();
         if (eye != null && eye.distanceSquared(at) < 1e-10) return;
         eye = at.clone();
         int duration = Math.max(1, Math.min(59, ticks));
@@ -180,6 +179,16 @@ final class ShotCamera {
         savedDistance = savedSpeed = savedScale = null;
         lensDistance = -1;
         lensFov = 1;
+    }
+
+    /**
+     * Keeps the seated player invisible: every tick, not only while they
+     * aim, or they show (shrunk to a speck) once a long shot outlasts it.
+     */
+    void refresh() {
+        if (seat == null) return;
+        PotionEffect hidden = player.getPotionEffect(PotionEffectType.INVISIBILITY);
+        if (hidden == null || hidden.getDuration() < 40) hide(true);
     }
 
     /** Where the eyes were last put. */
