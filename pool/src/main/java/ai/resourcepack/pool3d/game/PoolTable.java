@@ -336,10 +336,8 @@ public final class PoolTable {
         Display d = cue.display();
         if (d.getBillboard() != Display.Billboard.FIXED) d.setBillboard(Display.Billboard.FIXED);
         Vector3f axis = dir(ax, ay, az).normalize();
-        d.setInterpolationDelay(0);
-        d.setInterpolationDuration(1);
-        d.setTransformation(new Transformation(new Vector3f(), new Quaternionf().rotationTo(new Vector3f(0, 1, 0), axis),
-                new Vector3f(1, 1, 1), new Quaternionf()));
+        transform(d, new Transformation(new Vector3f(), new Quaternionf().rotationTo(new Vector3f(0, 1, 0), axis),
+                new Vector3f(1, 1, 1), new Quaternionf()), 1);
     }
 
     /** Whether the shooter is looking down the cue through the orbit camera. */
@@ -373,13 +371,11 @@ public final class PoolTable {
         Vector3f along = new Vector3f(0, (float) Math.sin(elev), (float) Math.cos(elev));
         Vector3f tip = new Vector3f((float) (side * R), (float) (height * R), (float) (back * R))
                 .add(new Vector3f(along).mul((float) gap));
-        d.setInterpolationDelay(0);
         // Stroking, the cue follows the mouse a tick at a time, and the mouse
         // reaches the server unevenly (none in one tick, two in the next):
         // easing each step over two ticks smooths that without much delay.
-        d.setInterpolationDuration(mode == Mode.STROKE ? 2 : 1);
-        d.setTransformation(new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), along),
-                new Vector3f(1, 1, 1), new Quaternionf()));
+        transform(d, new Transformation(tip, new Quaternionf().rotationTo(new Vector3f(0, 1, 0), along),
+                new Vector3f(1, 1, 1), new Quaternionf()), mode == Mode.STROKE ? 2 : 1);
     }
 
     /**
@@ -403,6 +399,25 @@ public final class PoolTable {
             need = Math.max(need, Math.atan2(R + 0.016, along - R));
         }
         return Math.min(need, Math.toRadians(40));
+    }
+
+    /**
+     * Gives a display a new transformation, eased over {@code ticks}; and
+     * nothing at all when it already has that one. Starting an ease is always
+     * sent, changed or not, and the client starts it again from the shape
+     * before the last change: sent every tick with nothing changed, the cue
+     * flickered back to where it was drawn from, every frame.
+     */
+    private static void transform(Display d, Transformation t, int ticks) {
+        if (same(d.getTransformation(), t)) return;
+        d.setInterpolationDelay(0);
+        d.setInterpolationDuration(ticks);
+        d.setTransformation(t);
+    }
+
+    private static boolean same(Transformation a, Transformation b) {
+        return a.getTranslation().equals(b.getTranslation(), 1e-5f) && a.getScale().equals(b.getScale(), 1e-5f)
+                && a.getLeftRotation().equals(b.getLeftRotation(), 1e-5f) && a.getRightRotation().equals(b.getRightRotation(), 1e-5f);
     }
 
     private void hideCue() {
@@ -455,9 +470,7 @@ public final class PoolTable {
         Quaternionf rot = new Quaternionf().rotateY(yaw);
         float width = 0.0026f, thick = 0.0006f;
         Vector3f shift = rot.transform(new Vector3f(0, 0, -width / 2));
-        d.setInterpolationDelay(0);
-        d.setInterpolationDuration(1);
-        d.setTransformation(new Transformation(shift, rot, new Vector3f((float) Math.max(0, len), len > 0 ? thick : 0, width), new Quaternionf()));
+        transform(d, new Transformation(shift, rot, new Vector3f((float) Math.max(0, len), len > 0 ? thick : 0, width), new Quaternionf()), 1);
     }
 
     private void hideGuide() {
