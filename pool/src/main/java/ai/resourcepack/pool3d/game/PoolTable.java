@@ -95,10 +95,11 @@ public final class PoolTable {
 
     private ModelInstance body;
     private final Map<Integer, BallView> views = new HashMap<>();
-    private ModelInstance cue, ghost;
-    /** The guide's bands: where the object ball goes, and where the cue ball goes after it. */
-    private final ItemDisplay[] bands = new ItemDisplay[2];
-    private final int[] bandColours = {-1, -1};
+    private ModelInstance cue;
+    /** The guide, flat on the cloth: the ring, the object ball's shadow and the cue ball's wedge. */
+    private final ItemDisplay[] guide = new ItemDisplay[3];
+    private final int[] guideColours = {-1, -1, -1};
+    private static final String[] GUIDE_MODELS = {"pool:guide_ring", "pool:guide_shadow", "pool:guide_wedge"};
     private BossBar bar;
 
     // The shot being lined up.
@@ -507,22 +508,17 @@ public final class PoolTable {
             return;
         }
         double dx = Math.cos(aim), dy = Math.sin(aim);
-        Location gl = at(g.gx(), g.gy(), BED + R);
-        if (ghost == null || !ghost.valid()) {
-            ghost = engine.spawn(Assets.GHOST, gl);
-            ghost.display().setTeleportDuration(1);
-            ghost.display().setBrightness(new Display.Brightness(15, 15));
-        } else ghost.teleport(gl);
-        // As Shooterspool draws it: the ring where the cue ball meets the
-        // ball, a fading band in that ball's colour the way it goes, and a
-        // fainter white one the way the cue ball goes on. Each is as long as
-        // the share of the blow it takes.
+        // As Shooterspool draws it: a ring on the cloth where the cue ball
+        // will be when it meets the ball, a soft shadow in that ball's colour
+        // the way it goes, and a pale wedge from the ring's edge the way the
+        // cue ball goes on, longer the more of the blow each takes.
         Ball o = sim.ball(g.hit());
+        flat(0, g.gx(), g.gy(), dx, dy, 0, 2.15 * R, 0xFFFFFF);
         double full = Math.max(0, dx * g.ox() + dy * g.oy());
-        band(0, o.x, o.y, g.ox(), g.oy(), 0.10 + 0.30 * full, 2 * R, shade(o.number));
+        flat(1, o.x, o.y, g.ox(), g.oy(), 0.16 + 0.22 * full, 2 * R, shade(o.number));
         double thin = Math.sqrt(Math.max(0, 1 - full * full));
-        if (g.tx() == 0 && g.ty() == 0 || thin < 0.05) band(1, 0, 0, 1, 0, 0, 0, 0);
-        else band(1, g.gx(), g.gy(), g.tx(), g.ty(), 0.06 + 0.24 * thin, 1.2 * R, 0xFFFFFF);
+        if (g.tx() == 0 && g.ty() == 0 || thin < 0.05) flat(2, 0, 0, 1, 0, -1, 0, 0);
+        else flat(2, g.gx() + g.tx() * R, g.gy() + g.ty() * R, g.tx(), g.ty(), 0.10 + 0.20 * thin, 1.5 * R, 0xFFFFFF);
     }
 
     /** The colour of a ball's band: its own, a little deepened, as a shadow on the cloth. */
@@ -534,13 +530,13 @@ public final class PoolTable {
     }
 
     /**
-     * Band {@code i}: flat on the cloth from (x, y) along (dx, dy),
-     * {@code len} long and {@code width} wide, fading out towards its end,
-     * tinted {@code rgb}; nothing when {@code len} is 0.
+     * Guide piece {@code i}, flat on the cloth: from (x, y) along (dx, dy),
+     * {@code len} long and {@code width} wide; with a {@code len} of 0, a
+     * square {@code width} across centred there; below 0, nothing.
      */
-    private void band(int i, double x, double y, double dx, double dy, double len, double width, int rgb) {
-        Location at = at(x, y, BED + 0.0015);
-        ItemDisplay d = bands[i];
+    private void flat(int i, double x, double y, double dx, double dy, double len, double width, int rgb) {
+        Location at = at(x, y, BED + 0.0012 + i * 0.0003);
+        ItemDisplay d = guide[i];
         if (d == null || !d.isValid()) {
             d = world.spawn(at, ItemDisplay.class, e -> {
                 e.setPersistent(false);
@@ -548,26 +544,24 @@ public final class PoolTable {
                 e.setTeleportDuration(1);
                 e.addScoreboardTag("pool3d");
             });
-            bands[i] = d;
-            bandColours[i] = -1;
+            guide[i] = d;
+            guideColours[i] = -1;
         } else if (d.getLocation().distanceSquared(at) > 1e-10) d.teleport(at);
-        if (len > 0 && bandColours[i] != rgb) {
-            bandColours[i] = rgb;
-            d.setItemStack(Bukkit.getItemFactory().createItemStack(
-                    "minecraft:paper[minecraft:item_model=\"pool:band\",minecraft:custom_model_data={colors:[" + rgb + "]}]"));
+        if (len >= 0 && guideColours[i] != rgb) {
+            guideColours[i] = rgb;
+            d.setItemStack(Bukkit.getItemFactory().createItemStack("minecraft:paper[minecraft:item_model=\"" + GUIDE_MODELS[i]
+                    + "\",minecraft:custom_model_data={colors:[" + rgb + "]}]"));
         }
         Vector3f w = dir(dx, dy, 0).normalize();
         Quaternionf rot = new Quaternionf().rotateY((float) Math.atan2(w.x, w.z));
-        Vector3f shift = new Vector3f(w).mul((float) (len / 2));
-        transform(d, new Transformation(shift, rot, len > 0 ? new Vector3f((float) width, 1, (float) len) : new Vector3f(), new Quaternionf()), 1);
+        Vector3f size = len < 0 ? new Vector3f() : new Vector3f((float) width, 1, (float) (len == 0 ? width : len));
+        transform(d, new Transformation(new Vector3f(w).mul((float) (Math.max(0, len) / 2)), rot, size, new Quaternionf()), 1);
     }
 
     private void hideGuide() {
-        if (ghost != null) ghost.remove();
-        ghost = null;
-        for (int i = 0; i < bands.length; i++) {
-            if (bands[i] != null) bands[i].remove();
-            bands[i] = null;
+        for (int i = 0; i < guide.length; i++) {
+            if (guide[i] != null) guide[i].remove();
+            guide[i] = null;
         }
     }
 

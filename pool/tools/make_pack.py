@@ -9,9 +9,8 @@ src/main/resources/pack/ (shipped into 3D Engine's pack/ folder):
     power bar;
   * the cue item: an icon in the inventory, nothing in the hand (the cue you
     see is the one on the table);
-  * the aiming guide's band, Shooterspool's way of showing where a ball goes:
-    a soft stripe flat on the cloth, fading out along its length, tinted per
-    ball from the item's custom_model_data colour.
+  * the aiming guide, Shooterspool's: a ring, a shadow and a wedge, flat on
+    the cloth, tinted per ball from the item's custom_model_data colour.
 
     python tools/make_pack.py
 """
@@ -171,27 +170,72 @@ def make_item():
         "hand_animation_on_swap": False}, indent=2))
 
 
-# ---- the guide's band ----------------------------------------------------------------------
+# ---- the guide ----------------------------------------------------------------------------
+
+def flat_item(name, texture):
+    """A flat 1 x 1 block item on the display's middle, tinted by custom_model_data colour 0."""
+    write(os.path.join(OUT, "models", "item", name + ".json"), json.dumps({
+        "textures": {"t": "pool:item/" + texture, "particle": "pool:item/" + texture},
+        "elements": [{"from": [0, 8, 0], "to": [16, 8, 16], "shade": False,
+                      "faces": {"up": {"uv": [0, 0, 16, 16], "texture": "#t", "tintindex": 0}}}]}, indent=2))
+    write(os.path.join(OUT, "items", name + ".json"), json.dumps({
+        "model": {"type": "minecraft:model", "model": "pool:item/" + name,
+                  "tints": [{"type": "minecraft:custom_model_data", "index": 0, "default": 16777215}]}}, indent=2))
+
+
+def smooth(t):
+    t = min(1.0, max(0.0, t))
+    return t * t * (3 - 2 * t)
+
 
 def make_band():
-    w, h = 16, 64
+    """
+    Shooterspool's aiming guide, drawn flat on the cloth: a ring where the
+    cue ball will be when it meets the ball, a soft shadow the width of a
+    ball the way that ball goes, and a pale wedge, narrowing, the way the cue
+    ball goes on. Fine textures, so nothing is seen as steps.
+    """
+    tex = os.path.join(OUT, "textures", "item")
+    os.makedirs(tex, exist_ok=True)
+    # The object ball's way: as wide as the ball, soft at the sides, fading out.
+    w, h = 64, 512
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    px = img.load()
     for y in range(h):
-        # Strongest where the ball leaves, gone by the far end.
-        along = (1 - y / (h - 1)) ** 1.6
+        along = (1 - y / (h - 1)) ** 1.3
         for x in range(w):
             across = 1 - abs((x + 0.5) / w * 2 - 1)
-            soft = min(1.0, across * 2.2)
-            img.putpixel((x, y), (255, 255, 255, int(round(170 * along * soft))))
-    img.save(os.path.join(OUT, "textures", "item", "band.png"))
-    # Flat on the display's middle, 1 x 1 block; the table scales and turns it.
-    write(os.path.join(OUT, "models", "item", "band.json"), json.dumps({
-        "textures": {"band": "pool:item/band", "particle": "pool:item/band"},
-        "elements": [{"from": [0, 8, 0], "to": [16, 8, 16], "shade": False,
-                      "faces": {"up": {"uv": [0, 0, 16, 16], "texture": "#band", "tintindex": 0}}}]}, indent=2))
-    write(os.path.join(OUT, "items", "band.json"), json.dumps({
-        "model": {"type": "minecraft:model", "model": "pool:item/band",
-                  "tints": [{"type": "minecraft:custom_model_data", "index": 0, "default": 16777215}]}}, indent=2))
+            px[x, y] = (255, 255, 255, int(round(150 * along * smooth(across * 2.5))))
+    img.save(os.path.join(tex, "guide_shadow.png"))
+    # The cue ball's way: a wedge from most of a ball wide to a third of it.
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    px = img.load()
+    for y in range(h):
+        f = y / (h - 1)
+        half = 0.5 * (1 - 0.65 * f)
+        along = (1 - f) ** 1.1
+        for x in range(w):
+            off = abs((x + 0.5) / w - 0.5)
+            edge = smooth((half - off) * w / 3)
+            px[x, y] = (255, 255, 255, int(round(120 * along * edge)))
+    img.save(os.path.join(tex, "guide_wedge.png"))
+    # The ring: a thin outline a ball across, in a texture a little wider.
+    n = 256
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    px = img.load()
+    outer, line = n / 2 - 2, n * 0.035
+    for y in range(n):
+        for x in range(n):
+            r = math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2)
+            a = smooth((line / 2 - abs(r - (outer - line / 2))) / 1.5)
+            px[x, y] = (255, 255, 255, int(round(170 * a)))
+    img.save(os.path.join(tex, "guide_ring.png"))
+    flat_item("guide_shadow", "guide_shadow")
+    flat_item("guide_wedge", "guide_wedge")
+    flat_item("guide_ring", "guide_ring")
+    for old in ("items/band.json", "models/item/band.json", "textures/item/band.png"):
+        if os.path.exists(os.path.join(OUT, old)):
+            os.remove(os.path.join(OUT, old))
 
 
 if __name__ == "__main__":
