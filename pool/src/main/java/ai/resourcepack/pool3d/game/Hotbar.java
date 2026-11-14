@@ -7,13 +7,17 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.configuration.serialization.ConfigurationSerializable;
 import org.bukkit.util.io.BukkitObjectInputStream;
 import org.bukkit.util.io.BukkitObjectOutputStream;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputFilter;
+import java.io.Serializable;
 import java.util.Base64;
+import java.util.Set;
 
 /**
  * Spare cues in the rest of the shooter's hotbar while they are at the shot.
@@ -86,6 +90,56 @@ final class Hotbar {
         return it != null && it.hasItemMeta() && it.getItemMeta().getPersistentDataContainer().has(SPARE, PersistentDataType.BYTE);
     }
 
+    /** Exact classes a kept stack may contain, besides those {@link #allowed} takes by rule. */
+    private static final Set<String> ALLOWED = Set.of(
+            "org.bukkit.util.io.Wrapper",
+            "java.lang.Object", "java.lang.String", "java.lang.Number", "java.lang.Boolean",
+            "java.lang.Byte", "java.lang.Short", "java.lang.Integer", "java.lang.Long",
+            "java.lang.Float", "java.lang.Double", "java.lang.Character", "java.lang.Enum",
+            "java.util.ArrayList", "java.util.LinkedList", "java.util.Arrays$ArrayList",
+            "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap",
+            "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet",
+            "java.util.EnumMap", "java.util.EnumSet$SerializationProxy",
+            "java.util.RegularEnumSet", "java.util.JumboEnumSet",
+            "java.util.CollSer", "java.util.UUID", "java.util.Map$Entry");
+
+    /**
+     * A read only builds the classes an item is made of, and nothing deep or
+     * huge. An unfiltered object stream builds any serialisable class on the
+     * server's classpath out of whatever bytes it is handed. The rule is RP
+     * Engine's for its stored containers.
+     */
+    private static final ObjectInputFilter FILTER = info -> {
+        if (info.depth() > 32 || info.references() > 1_000_000 || info.arrayLength() > 1_000_000) {
+            return ObjectInputFilter.Status.REJECTED;
+        }
+        Class<?> type = info.serialClass();
+        if (type == null) return ObjectInputFilter.Status.UNDECIDED;
+        return allowed(type) ? ObjectInputFilter.Status.ALLOWED : ObjectInputFilter.Status.REJECTED;
+    };
+
+    private static boolean allowed(Class<?> type) {
+        while (type.isArray()) type = type.getComponentType();
+        // An enum constant is read by name, never constructed.
+        if (type.isPrimitive() || type.isEnum()) return true;
+        String name = type.getName();
+        if (ALLOWED.contains(name)) return true;
+        // What a Wrapper resolves to (the stack, its meta), built by Bukkit from the wrapper's map.
+        if (ConfigurationSerializable.class.isAssignableFrom(type) && !Serializable.class.isAssignableFrom(type)) return true;
+        if (name.startsWith("java.util.Collections$Unmodifiable") || name.startsWith("java.util.Collections$Singleton")
+                || name.startsWith("java.util.Collections$Empty") || name.startsWith("java.util.ImmutableCollections$")) {
+            return true;
+        }
+        // Guava's immutable collections, which is what a stack's serialised map is.
+        if (!name.startsWith("com.google.common.collect.")) return false;
+        if (name.contains("SerializedForm")) return true;
+        for (Class<?> at = type; at != null; at = at.getSuperclass()) {
+            String parent = at.getName();
+            if (parent.equals("com.google.common.collect.ImmutableCollection") || parent.equals("com.google.common.collect.ImmutableMap")) return true;
+        }
+        return false;
+    }
+
     private static String write(ItemStack[] items) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (BukkitObjectOutputStream out = new BukkitObjectOutputStream(bytes)) {
@@ -97,7 +151,11 @@ final class Hotbar {
 
     private static ItemStack[] read(String data) throws IOException, ClassNotFoundException {
         try (BukkitObjectInputStream in = new BukkitObjectInputStream(new ByteArrayInputStream(Base64.getDecoder().decode(data)))) {
-            ItemStack[] items = new ItemStack[in.readInt()];
+            in.setObjectInputFilter(FILTER);
+            int count = in.readInt();
+            // write() only ever stores the nine hotbar slots.
+            if (count < 0 || count > 9) throw new IOException("Not a kept hotbar: " + count + " stacks");
+            ItemStack[] items = new ItemStack[count];
             for (int i = 0; i < items.length; i++) items[i] = (ItemStack) in.readObject();
             return items;
         }
