@@ -78,6 +78,12 @@ final class Instance implements ModelInstance {
     /** Set when a mover drives this instance. */
     Steering mover;
 
+    @Override
+    public java.util.Optional<ai.resourcepack.engine3d.api.Mover> mover() {
+        Steering legs = mover;
+        return legs != null && legs.valid() ? java.util.Optional.of(legs) : java.util.Optional.empty();
+    }
+
     private ItemDisplay head;
     private final List<Interaction> boxes = new ArrayList<>();
     /** Per box, in the model's own space: middle x, bottom y, middle z, width, height. */

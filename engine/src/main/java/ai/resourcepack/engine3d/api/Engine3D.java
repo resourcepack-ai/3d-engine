@@ -90,7 +90,25 @@ public interface Engine3D {
     /** Launches effect {@code name} from {@code at} at {@code velocity} (blocks per tick), flown by the engine. */
     Particle particle(String name, Location at, org.bukkit.util.Vector velocity, Particle.Options options);
 
+    /** Every model standing in a loaded chunk. */
     Collection<ModelInstance> instances();
+
+    /**
+     * The models within {@code radius} blocks of a place, nearest first: "is
+     * there a chair here already", or everything a blast should knock over.
+     */
+    default java.util.List<ModelInstance> near(Location centre, double radius) {
+        java.util.List<ModelInstance> found = new java.util.ArrayList<>();
+        if (centre == null || centre.getWorld() == null || radius < 0) return found;
+        for (ModelInstance model : instances()) {
+            Location at = model.location();
+            if (model.valid() && centre.getWorld().equals(at.getWorld()) && at.distanceSquared(centre) <= radius * radius) {
+                found.add(model);
+            }
+        }
+        found.sort(java.util.Comparator.comparingDouble(model -> model.location().distanceSquared(centre)));
+        return found;
+    }
 
     /** The instance drawn by {@code entity} (its display, or a mover's brain). */
     Optional<ModelInstance> instance(Entity entity);

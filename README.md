@@ -234,6 +234,9 @@ engine.whenReady(() -> {
 point is on any frame, scales, seats riders, looks, and turns its hitboxes on
 and off. `Engine3D.instance(entity)` finds the model any of its entities
 belongs to: its display, head, a hitbox, a seat or its brain.
+`Engine3D.near(location, radius)` lists the models around a place, nearest
+first, and `ModelInstance.mover()` is the mover walking a model about, if it
+has one.
 
 ### Events
 

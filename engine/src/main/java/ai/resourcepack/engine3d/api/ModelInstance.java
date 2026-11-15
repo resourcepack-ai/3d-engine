@@ -85,6 +85,14 @@ public interface ModelInstance {
     /** Saved with its chunk, as a placed model is. */
     boolean persistent();
 
+    /**
+     * The mover walking this model about, when {@link Engine3D#mover} gave it
+     * one that is still alive. Empty for a model that stands where it was put.
+     */
+    default java.util.Optional<Mover> mover() {
+        return java.util.Optional.empty();
+    }
+
     boolean valid();
 
     void remove();
